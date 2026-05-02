@@ -13,6 +13,7 @@ import { OwnerReviewPack } from "@/components/owner-review-pack";
 import { SpendBreakdownDonut } from "@/components/charts/spend-breakdown-donut";
 import { DocumentHistoryCard } from "@/components/history/document-history-card";
 import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
+import { listDocuments } from "@/lib/db";
 
 export default function DashboardPage() {
   const [data, setData] = useState<StatementData | null>(null);
@@ -33,7 +34,12 @@ export default function DashboardPage() {
     if (raw) setData(JSON.parse(raw));
     if (rawInsights) setInsights(JSON.parse(rawInsights));
     if (rawMode === "business") setMode("business");
-    setDocHistory(getDocumentHistory());
+
+    listDocuments()
+      .then((docs) => {
+        setDocHistory(docs.length > 0 ? docs : getDocumentHistory());
+      })
+      .catch(() => setDocHistory(getDocumentHistory()));
   }, []);
 
   const isBusiness = mode === "business";

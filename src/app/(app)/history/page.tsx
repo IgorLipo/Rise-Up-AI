@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
+import { listDocuments } from "@/lib/db";
 import { DocumentHistoryCard } from "@/components/history/document-history-card";
 
 export default function HistoryPage() {
@@ -10,8 +11,16 @@ export default function HistoryPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setEntries(getDocumentHistory());
-    setLoaded(true);
+    listDocuments()
+      .then((docs) => {
+        if (docs.length > 0) {
+          setEntries(docs);
+        } else {
+          setEntries(getDocumentHistory());
+        }
+      })
+      .catch(() => setEntries(getDocumentHistory()))
+      .finally(() => setLoaded(true));
   }, []);
 
   if (!loaded) return null;

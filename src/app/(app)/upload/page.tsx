@@ -8,6 +8,7 @@ import { InsightCard } from "@/components/insight-card";
 import { InsightDrawer } from "@/components/insight-drawer";
 import { OwnerReviewPack } from "@/components/owner-review-pack";
 import { addDocumentHistory } from "@/lib/history";
+import { saveDocument } from "@/lib/db";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -75,8 +76,10 @@ export default function UploadPage() {
 
           const bizInsights = mode === "business" ? insightJson.insights as SpendReviewResult : null;
           const personal = mode === "personal" ? insightJson.insights as AIInsights : null;
+          const docId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
           addDocumentHistory({
-            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            id: docId,
             filename: file.name,
             uploadedAt: new Date().toISOString(),
             mode,
@@ -88,6 +91,11 @@ export default function UploadPage() {
               ? (bizInsights.executive_summary.estimated_monthly_savings.amount > 0 ? "good" : "fair")
               : personal?.cashFlowHealth ?? "fair",
             netFlow: json.data.summary.netFlow,
+          });
+
+          // Persist to Supabase
+          saveDocument(docId, file.name, mode, json.data, insightJson.insights).catch(() => {
+            // Supabase save is best-effort — don't block the UX
           });
         }
       } catch {
