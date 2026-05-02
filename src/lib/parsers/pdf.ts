@@ -1,13 +1,9 @@
-import { PDFParse } from "pdf-parse";
+import { extractText } from "unpdf";
 import type { StatementData, Transaction } from "@/types";
 import { categorizeTransaction, deriveMerchant } from "@/lib/utils";
 
 export async function parsePDFStatement(buffer: Buffer): Promise<StatementData> {
-  const parser = new PDFParse({ data: buffer as unknown as Uint8Array });
-  const result = await parser.getText();
-  await parser.destroy();
-
-  const text = result.text;
+  const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
   const transactions = extractTransactions(text);
   const accountInfo = extractAccountInfo(text);
   const summary = computeSummary(transactions);
