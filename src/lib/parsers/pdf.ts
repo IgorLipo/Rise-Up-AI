@@ -28,92 +28,111 @@ export async function parsePDFStatement(buffer: Buffer): Promise<StatementData> 
 // ── Transaction extraction (multi-strategy) ────────────────────────────
 
 function extractTransactions(text: string): Transaction[] {
+  // Normalize whitespace: collapse all runs to single space, compress multiple spaces
   const cleaned = text
-    .replace(/[ \t]+/g, " ")
+    .replace(/\s+/g, " ")
     .replace(/[£€]/g, "£")
-    .replace(/\f/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  const result = tryNatWestTable(cleaned);
-  if (result.length > 0) return result;
+  // Try NatWest format first (handles continuous text, no line breaks needed)
+  const natwest = tryNatWestContinuous(cleaned);
+  if (natwest.length > 0) return natwest;
 
-  const generic = tryGenericPatterns(cleaned);
+  // Fall back to line-based strategies for other banks
+  const lines = cleaned
+    .replace(/\f/g, "\n")
+    .split("\n")
+    .filter(Boolean);
+
+  const generic = tryGenericPatterns(lines);
   if (generic.length > 0) return generic;
 
-  return tryBruteForce(cleaned);
+  return tryBruteForce(lines);
 }
 
-// ── Strategy 1: NatWest / UK table — Date | Desc | Money Out | Money In | Balance
+// ── Month parsing ──────────────────────────────────────────────────────
 
-function tryNatWestTable(text: string): Transaction[] {
+const MONTHS_MAP: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+function parseNatWestDate(raw: string, fallbackYear: number): string | null {
+  const m = raw.match(
+    /^(\d{1,2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(?:\s+(\d{4}))?$/i
+  );
+  if (!m) return null;
+  const day = parseInt(m[1]);
+  const month = MONTHS_MAP[m[2].toLowerCase()];
+  const year = m[3] ? parseInt(m[3]) : fallbackYear;
+  if (!month || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function extractStatementYear(text: string): number {
+  let m = text.match(/Statement\s+Date\s+\d{1,2}\s+\w+\s+(\d{4})/i);
+  if (m) return parseInt(m[1]);
+  m = text.match(/Period\s+Covered\s+\d{1,2}\s+\w+\s+(\d{4})/i);
+  if (m) return parseInt(m[1]);
+  m = text.match(/(\d{1,2}\s+\w+\s+(\d{4}))\s+BROUGHT\s+FORWARD/i);
+  if (m) return parseInt(m[2]);
+  return new Date().getFullYear();
+}
+
+// ── Strategy 1: NatWest — continuous text (no line breaks) ─────────────
+
+const TX_PREFIXES = [
+  "Automated Credit",
+  "OnLine Transaction",
+  "Card Transaction",
+  "Direct Debit",
+  "Cash Withdrawal",
+  "Charges",
+];
+
+// Matches: <prefix> <description> <amount> <balance>
+// Uses a non-capturing group with negative lookahead to ensure we don't
+// overrun into the next transaction, a date header, or a page boundary.
+const TX_RE = new RegExp(
+  `(${TX_PREFIXES.join("|")})\\s+` +
+    `((?:(?!${TX_PREFIXES.join("|")}|\\d{1,2}\\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)|RETSTMT|Account Name|BROUGHT FORWARD|Take control|Switching|Need help|Statement Abbrev|How to contact|Important info|Dispute Resol).)*?)` +
+    `([\\d,]+\\.[0-9]{2})\\s+([\\d,]+\\.[0-9]{2})`,
+  "gi"
+);
+
+function tryNatWestContinuous(text: string): Transaction[] {
+  const statementYear = extractStatementYear(text);
+  if (!statementYear) return [];
+
   const transactions: Transaction[] = [];
-  const lines = text.split("\n");
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (isMetaLine(line)) continue;
+  // Iterate over all transaction matches
+  let m: RegExpExecArray | null;
+  while ((m = TX_RE.exec(text)) !== null) {
+    const prefix = m[1];
+    const rawDesc = m[2];
+    const amountStr = m[3];
+    // m[4] is balance, captured but not used
 
-    // Line MUST start with a date
-    let m = line.match(/^\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+)/)
-      ?? line.match(/^\s*(\d{1,2}\/\d{1,2})\s+(.+)/);
-    if (!m) continue;
+    // Find the most recent date before this transaction
+    const textBefore = text.slice(0, m.index);
+    const date = findLatestDate(textBefore, statementYear);
+    if (!date) continue;
 
-    const dateStr = m[1];
-    const rest = m[2];
+    const amount = parseFloat(amountStr.replace(/,/g, ""));
+    let description = rawDesc.trim();
 
-    const allAmounts = findAllAmounts(rest);
-    if (allAmounts.length === 0) continue;
+    // Strip trailing partial words / noise
+    description = cleanDescription(description);
 
-    // Last amount is usually the running balance — strip it
-    // NatWest: Date | Desc | Money Out | Money In | Balance
-    // In extracted text: date desc [debitAmt] [creditAmt] [balanceAmt]
-    const balance = allAmounts.length > 1 ? allAmounts.pop()! : undefined;
-    const txAmounts = allAmounts; // remaining are transaction amounts
+    // Skip lines that are actually BROUGHT FORWARD variants
+    if (/^BROUGHT\s+FORWARD/i.test(description)) continue;
+    // Skip footer/header noise that slipped through
+    if (description.length < 2) continue;
+    if (/^(?:MR|MS|MRS)\s+[A-Z]/i.test(description)) continue;
 
-    // Description = text before the first amount
-    const firstAmtIdx = rest.search(/£?[\d,]+\.\d{2}/);
-    let description = firstAmtIdx > 0 ? rest.slice(0, firstAmtIdx).trim() : rest.trim();
-
-    // Absorb next line if it looks like continuation
-    if (description.length < 8 && i + 1 < lines.length) {
-      const next = lines[i + 1];
-      if (!looksLikeTxStart(next) && !isMetaLine(next)) {
-        description += " " + next.replace(/£[\d,]+\.\d{2}.*$/, "").trim();
-      }
-    }
-
-    // Determine type and amount
-    let amount: number;
-    let type: "credit" | "debit";
-
-    if (txAmounts.length >= 2) {
-      // Both Money Out and Money In columns present (rare — e.g. reversal)
-      const [debitAmt, creditAmt] = txAmounts;
-      if (creditAmt > 0.01 && debitAmt < 0.01) {
-        amount = creditAmt; type = "credit";
-      } else if (debitAmt > 0.01 && creditAmt < 0.01) {
-        amount = debitAmt; type = "debit";
-      } else {
-        amount = debitAmt > creditAmt ? debitAmt : creditAmt;
-        type = debitAmt > creditAmt ? "debit" : "credit";
-      }
-    } else if (txAmounts.length === 1) {
-      amount = txAmounts[0];
-      // Heuristic: check description + spacing for direction
-      const firstAmtInLine = rest.indexOf("£");
-      // Money In amounts are typically indented further right
-      type = isLikelyCredit(description) ? "credit" : "debit";
-    } else {
-      continue;
-    }
-
-    const date = normalizeDate(dateStr);
-    description = cleanDescription(description).replace(
-      /^(?:DD|BACS|CHAPS|FPO|SO|BP|TFR|CR|DR)\s*/i,
-      ""
-    );
-    if (!date || amount <= 0 || description.length < 1) continue;
+    const isCredit =
+      prefix === "Automated Credit" || /\bREFUND\b/i.test(description);
 
     transactions.push({
       id: crypto.randomUUID(),
@@ -121,28 +140,64 @@ function tryNatWestTable(text: string): Transaction[] {
       description,
       merchant: deriveMerchant(description),
       amount,
-      type,
-      direction: type === "credit" ? "income" : "expense",
-      category: type === "debit" ? categorizeTransaction(description) : "Income",
+      type: isCredit ? "credit" : "debit",
+      direction: isCredit ? "income" : "expense",
+      category: isCredit ? "Income" : categorizeTransaction(description),
     });
   }
 
   return transactions;
 }
 
+function findLatestDate(
+  textBefore: string,
+  year: number
+): string | null {
+  // Find all date-like patterns in the text before this transaction
+  const dateRe =
+    /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(?:\s+\d{4})?)\s*/gi;
+  const dates: Array<{ date: string; pos: number }> = [];
+  let dm: RegExpExecArray | null;
+  while ((dm = dateRe.exec(textBefore)) !== null) {
+    const parsed = parseNatWestDate(dm[1], year);
+    if (parsed) {
+      dates.push({ date: parsed, pos: dm.index });
+    }
+  }
+
+  // Return the latest (last position) date
+  if (dates.length === 0) return null;
+  dates.sort((a, b) => b.pos - a.pos);
+  return dates[0].date;
+}
+
 // ── Strategy 2: Generic date + desc + amount on same line ──────────────
 
-function tryGenericPatterns(text: string): Transaction[] {
+function tryGenericPatterns(lines: string[]): Transaction[] {
   const transactions: Transaction[] = [];
-  const lines = text.split("\n");
 
   const patterns: Array<{ re: RegExp; d: number; de: number; a: number }> = [
     // 12 Jan 2024  DESC  -50.00
-    { re: /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})\s+(.+?)\s+(-?£?[\d,]+\.\d{2})/i, d: 1, de: 2, a: 3 },
+    {
+      re: /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})\s+(.+?)\s+(-?£?[\d,]+\.\d{2})/i,
+      d: 1,
+      de: 2,
+      a: 3,
+    },
     // 2024-01-15  DESC  -50.00
-    { re: /(\d{4}-\d{2}-\d{2})\s+(.+?)\s+(-?£?[\d,]+\.\d{2})/i, d: 1, de: 2, a: 3 },
+    {
+      re: /(\d{4}-\d{2}-\d{2})\s+(.+?)\s+(-?£?[\d,]+\.\d{2})/i,
+      d: 1,
+      de: 2,
+      a: 3,
+    },
     // 01/15/2024  DESC  50.00
-    { re: /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+(-?£?[\d,]+\.\d{2})/i, d: 1, de: 2, a: 3 },
+    {
+      re: /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+(-?£?[\d,]+\.\d{2})/i,
+      d: 1,
+      de: 2,
+      a: 3,
+    },
   ];
 
   for (const line of lines) {
@@ -175,15 +230,15 @@ function tryGenericPatterns(text: string): Transaction[] {
 
 // ── Strategy 3: Brute-force — any date-prefixed line with amounts ──────
 
-function tryBruteForce(text: string): Transaction[] {
+function tryBruteForce(lines: string[]): Transaction[] {
   const transactions: Transaction[] = [];
-  const lines = text.split("\n");
 
   for (const line of lines) {
     if (isMetaLine(line)) continue;
-    const dm = line.match(/^\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/)
-           ?? line.match(/^\s*(\d{4}-\d{2}-\d{2})/)
-           ?? line.match(/^\s*(\d{1,2}\/\d{1,2})/);
+    const dm =
+      line.match(/^\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/) ??
+      line.match(/^\s*(\d{4}-\d{2}-\d{2})/) ??
+      line.match(/^\s*(\d{1,2}\/\d{1,2})/);
     if (!dm) continue;
 
     const amounts = findAllAmounts(line);
@@ -194,7 +249,10 @@ function tryBruteForce(text: string): Transaction[] {
 
     const dateEnd = (dm.index ?? 0) + dm[0].length;
     const amtIdx = line.search(/£?[\d,]+\.\d{2}/);
-    const desc = amtIdx > dateEnd ? line.slice(dateEnd, amtIdx).trim() : line.slice(dateEnd).trim();
+    const desc =
+      amtIdx > dateEnd
+        ? line.slice(dateEnd, amtIdx).trim()
+        : line.slice(dateEnd).trim();
     if (desc.length < 1) continue;
 
     const isCredit = isLikelyCredit(line);
@@ -226,7 +284,8 @@ function findAllAmounts(text: string): number[] {
 }
 
 function isMetaLine(line: string): boolean {
-  return /^\s*$/.test(line) ||
+  return (
+    /^\s*$/.test(line) ||
     /page\s+\d+/i.test(line) ||
     /continued/i.test(line) ||
     /balance\s+(?:brought|carried)\s+forward/i.test(line) ||
@@ -237,16 +296,14 @@ function isMetaLine(line: string): boolean {
     /sheet\s+\d/i.test(line) ||
     /^\s*date\s+description/i.test(line) ||
     /^\s*date\s+details/i.test(line) ||
-    /transaction\s*(?:type|details)/i.test(line);
-}
-
-function looksLikeTxStart(line: string): boolean {
-  return /^\s*\d{1,2}[\/-]\d{1,2}/.test(line) ||
-    /^\s*\d{4}-\d{2}-\d{2}/.test(line);
+    /transaction\s*(?:type|details)/i.test(line)
+  );
 }
 
 function isLikelyCredit(text: string): boolean {
-  return /\b(?:credit|deposit|payment\s+in|paid\s+in|transfer\s+in|interest\s+paid|cashback|refund|reversal)\b/i.test(text);
+  return /\b(?:credit|deposit|payment\s+in|paid\s+in|transfer\s+in|interest\s+paid|cashback|refund|reversal)\b/i.test(
+    text
+  );
 }
 
 function cleanDescription(desc: string): string {
@@ -260,17 +317,26 @@ function cleanDescription(desc: string): string {
 function extractAccountInfo(text: string): StatementData["accountInfo"] {
   const info: StatementData["accountInfo"] = {};
 
-  const sortCodeMatch = text.match(/(?:sort[-\s]?code|sort)[:\s]*(\d{2}[-\s]?\d{2}[-\s]?\d{2})/i);
-  const accountMatch = text.match(/(?:account[-\s]?(?:number|no))[:\s]*(\d{6,10})/i);
+  const sortCodeMatch = text.match(
+    /(?:sort[-\s]?code|sort)[:\s]*(\d{2}[-\s]?\d{2}[-\s]?\d{2})/i
+  );
+  const accountMatch = text.match(
+    /(?:account[-\s]?(?:number|no))[:\s]*(\d{6,10})/i
+  );
   if (sortCodeMatch && accountMatch) {
     info.accountNumber = `${sortCodeMatch[1]} / ${accountMatch[1]}`;
   }
 
-  const bankMatch = text.match(/(?:HSBC|Barclays|Lloyds|NatWest|Santander|Halifax|TSB|RBS|Nationwide|Monzo|Revolut|Starling|Metro|First Direct)/i);
+  const bankMatch = text.match(
+    /(?:HSBC|Barclays|Lloyds|NatWest|Santander|Halifax|TSB|RBS|Nationwide|Monzo|Revolut|Starling|Metro|First Direct)/i
+  );
   if (bankMatch) info.bankName = bankMatch[0];
 
-  const periodMatch = text.match(/(?:from|between)\s+(\d{1,2}\s+\w+\s+\d{4})\s+(?:to|and)\s+(\d{1,2}\s+\w+\s+\d{4})/i);
-  if (periodMatch) info.statementPeriod = { from: periodMatch[1], to: periodMatch[2] };
+  const periodMatch = text.match(
+    /(?:from|between)\s+(\d{1,2}\s+\w+\s+\d{4})\s+(?:to|and)\s+(\d{1,2}\s+\w+\s+\d{4})/i
+  );
+  if (periodMatch)
+    info.statementPeriod = { from: periodMatch[1], to: periodMatch[2] };
 
   return info;
 }
@@ -281,7 +347,8 @@ function normalizeDate(raw: string): string | null {
   if (m) {
     let year = parseInt(m[3]);
     if (year < 100) year += 2000;
-    const a = parseInt(m[1]), b = parseInt(m[2]);
+    const a = parseInt(m[1]),
+      b = parseInt(m[2]);
     // Try DD/MM (UK) first
     if (a <= 31 && b <= 12) {
       return `${year}-${String(b).padStart(2, "0")}-${String(a).padStart(2, "0")}`;
@@ -298,14 +365,12 @@ function normalizeDate(raw: string): string | null {
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
   // DD Mmm YYYY (15 Jan 2024)
-  const months: Record<string, number> = {
-    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
-  };
-  m = raw.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{2,4})/i);
+  m = raw.match(
+    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{2,4})/i
+  );
   if (m) {
     const day = parseInt(m[1]);
-    const month = months[m[2].toLowerCase().slice(0, 3)];
+    const month = MONTHS_MAP[m[2].toLowerCase().slice(0, 3)];
     let year = parseInt(m[3]);
     if (year < 100) year += 2000;
     if (month && day >= 1 && day <= 31) {
@@ -322,7 +387,9 @@ function normalizeDate(raw: string): string | null {
   return null;
 }
 
-function computeSummary(transactions: Transaction[]): StatementData["summary"] {
+function computeSummary(
+  transactions: Transaction[]
+): StatementData["summary"] {
   const credits = transactions.filter((t) => t.type === "credit");
   const debits = transactions.filter((t) => t.type === "debit");
 
@@ -339,8 +406,13 @@ function computeSummary(transactions: Transaction[]): StatementData["summary"] {
   };
 }
 
-function computeMonthlyBreakdown(transactions: Transaction[]): StatementData["monthlyBreakdown"] {
-  const monthly = new Map<string, { credits: number; debits: number; count: number }>();
+function computeMonthlyBreakdown(
+  transactions: Transaction[]
+): StatementData["monthlyBreakdown"] {
+  const monthly = new Map<
+    string,
+    { credits: number; debits: number; count: number }
+  >();
 
   for (const tx of transactions) {
     const month = tx.date.slice(0, 7);
@@ -362,7 +434,9 @@ function computeMonthlyBreakdown(transactions: Transaction[]): StatementData["mo
     }));
 }
 
-function computeCategoryBreakdown(transactions: Transaction[]): StatementData["categoryBreakdown"] {
+function computeCategoryBreakdown(
+  transactions: Transaction[]
+): StatementData["categoryBreakdown"] {
   const categories = new Map<string, { total: number; count: number }>();
   const debits = transactions.filter((t) => t.type === "debit");
 
@@ -374,7 +448,10 @@ function computeCategoryBreakdown(transactions: Transaction[]): StatementData["c
     categories.set(cat, existing);
   }
 
-  const total = Array.from(categories.values()).reduce((s, c) => s + c.total, 0);
+  const total = Array.from(categories.values()).reduce(
+    (s, c) => s + c.total,
+    0
+  );
 
   return Array.from(categories.entries())
     .map(([category, data]) => ({
