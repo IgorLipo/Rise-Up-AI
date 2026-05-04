@@ -11,9 +11,10 @@ const COLORS = [
 interface Props {
   data: { name: string; value: number }[];
   total: number;
+  onCategoryClick?: (category: { name: string; value: number }) => void;
 }
 
-export function SpendBreakdownDonut({ data, total }: Props) {
+export function SpendBreakdownDonut({ data, total, onCategoryClick }: Props) {
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-[260px] text-sm text-warm-black/30 dark:text-zinc-600">
@@ -37,8 +38,13 @@ export function SpendBreakdownDonut({ data, total }: Props) {
               dataKey="value"
               stroke="none"
             >
-              {data.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              {data.map((entry, i) => (
+                <Cell
+                  key={i}
+                  fill={COLORS[i % COLORS.length]}
+                  className={onCategoryClick ? "cursor-pointer" : ""}
+                  onClick={onCategoryClick ? () => onCategoryClick(entry) : undefined}
+                />
               ))}
             </Pie>
             <Tooltip
@@ -70,7 +76,15 @@ export function SpendBreakdownDonut({ data, total }: Props) {
           return (
             <div
               key={entry.name}
-              className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-warm-gray/30 dark:hover:bg-white/[0.02] transition-colors"
+              className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors ${
+                onCategoryClick
+                  ? "cursor-pointer hover:bg-warm-gray/30 dark:hover:bg-white/[0.06] active:scale-[0.98]"
+                  : "hover:bg-warm-gray/30 dark:hover:bg-white/[0.02]"
+              }`}
+              onClick={onCategoryClick ? () => onCategoryClick(entry) : undefined}
+              role={onCategoryClick ? "button" : undefined}
+              tabIndex={onCategoryClick ? 0 : undefined}
+              onKeyDown={onCategoryClick ? (e) => { if (e.key === "Enter" || e.key === " ") onCategoryClick(entry); } : undefined}
             >
               <div
                 className="w-2.5 h-2.5 rounded-sm shrink-0"

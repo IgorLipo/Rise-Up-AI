@@ -13,6 +13,7 @@ import { InsightCard } from "@/components/insight-card";
 import { InsightDrawer } from "@/components/insight-drawer";
 import { OwnerReviewPack } from "@/components/owner-review-pack";
 import { SpendBreakdownDonut } from "@/components/charts/spend-breakdown-donut";
+import { CategoryDetailDrawer } from "@/components/category-detail-drawer";
 import { DocumentHistoryCard } from "@/components/history/document-history-card";
 import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
 import { listDocuments, getDocument } from "@/lib/db";
@@ -26,6 +27,7 @@ export default function DashboardPage() {
 
   // Drawer state
   const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<{ name: string; value: number } | null>(null);
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
   const [legitimateIds, setLegitimateIds] = useState<Set<string>>(new Set());
   const [followUpIds, setFollowUpIds] = useState<Set<string>>(new Set());
@@ -295,7 +297,11 @@ export default function DashboardPage() {
           <h2 className="font-display text-base md:text-lg font-semibold text-warm-black dark:text-warm-white mb-4">
             {isBusiness ? "Spend breakdown" : "Spending breakdown"}
           </h2>
-          <SpendBreakdownDonut data={pieData} total={totalSpend} />
+          <SpendBreakdownDonut
+            data={pieData}
+            total={totalSpend}
+            onCategoryClick={setSelectedCategory}
+          />
         </div>
 
         <div className="glass rounded-2xl p-5 md:p-6">
@@ -566,6 +572,14 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ── Category Detail Drawer ── */}
+      <CategoryDetailDrawer
+        category={selectedCategory}
+        transactions={data.transactions}
+        totalSpend={totalSpend}
+        onClose={() => setSelectedCategory(null)}
+      />
 
       {/* ── Insight Drawer ── */}
       <InsightDrawer
