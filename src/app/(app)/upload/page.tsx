@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { StatementData, ParseResult, AIInsights, SpendReviewResult, AnalysisMode, Insight } from "@/types";
@@ -18,6 +18,8 @@ export default function UploadPage() {
   const [result, setResult] = useState<StatementData | null>(null);
   const [insights, setInsights] = useState<AIInsights | SpendReviewResult | null>(null);
   const [generatingInsights, setGeneratingInsights] = useState(false);
+  const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Drawer state
@@ -29,6 +31,17 @@ export default function UploadPage() {
   const isBusiness = mode === "business";
   const businessInsights = isBusiness ? (insights as SpendReviewResult | null) : null;
   const personalInsights = !isBusiness ? (insights as AIInsights | null) : null;
+
+  // Auto-redirect to dashboard after successful processing
+  useEffect(() => {
+    if (result && insights && !generatingInsights && !redirecting) {
+      setRedirecting(true);
+      const timer = setTimeout(() => {
+        router.push("/dashboard");
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [result, insights, generatingInsights, redirecting, router]);
 
   const processFile = useCallback(async (file: File) => {
     const isPDF = file.name.endsWith(".pdf") || file.type === "application/pdf";
@@ -43,6 +56,8 @@ export default function UploadPage() {
     setResult(null);
     setInsights(null);
     setSelectedInsight(null);
+    setCurrentFile(file.name);
+    setRedirecting(false);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -171,10 +186,26 @@ export default function UploadPage() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-2">
         <div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-warm-black dark:text-warm-white">
-            Upload a bank statement
+            {parsing
+              ? `Parsing ${currentFile || "statement"}...`
+              : generatingInsights
+                ? `Analyzing ${currentFile || "your statement"}...`
+                : redirecting
+                  ? "Taking you to your dashboard..."
+                  : result
+                    ? `${currentFile || "Statement"} — ${result.summary.transactionCount} transactions`
+                    : "Upload a bank statement"}
           </h1>
-          <p className="mt-2 text-warm-black/50 dark:text-warm-white/40">
-            PDF or CSV. All major UK banks supported. Your data never leaves this session.
+          <p className="mt-2 text-warm-black/50 dark:text-zinc-300">
+            {parsing
+              ? "Extracting transactions and categorising your data."
+              : generatingInsights
+                ? "AI is reviewing your spending patterns."
+                : redirecting
+                  ? `Parsed ${result?.summary.transactionCount ?? 0} transactions. Redirecting now.`
+                  : result
+                    ? `${isBusiness ? "Business" : "Personal"} analysis · ${result.categoryBreakdown.length} categories · Net flow ${result.summary.netFlow >= 0 ? "+" : ""}${formatCurrency(result.summary.netFlow)}`
+                    : "PDF or CSV. All major UK banks supported. Your data never leaves this session."}
           </p>
         </div>
 
@@ -187,7 +218,7 @@ export default function UploadPage() {
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
                   mode === m
                     ? "bg-white dark:bg-white/15 text-warm-black dark:text-warm-white shadow-sm"
-                    : "text-warm-black/40 dark:text-warm-white/30 hover:text-warm-black/60 dark:hover:text-warm-white/50"
+                    : "text-warm-black/40 dark:text-zinc-400 hover:text-warm-black/60 dark:hover:text-warm-white/50"
                 }`}
               >
                 {m === "personal" ? "Personal" : "Business"}
@@ -230,7 +261,7 @@ export default function UploadPage() {
               <span className="font-medium text-warm-black dark:text-warm-white">
                 Drop your {isBusiness ? "business " : ""}bank statement here
               </span>
-              <span className="text-sm text-warm-black/35 dark:text-warm-white/25">
+              <span className="text-sm text-warm-black/35 dark:text-zinc-500">
                 or click to browse — PDF, CSV
               </span>
             </div>
@@ -257,7 +288,7 @@ export default function UploadPage() {
               { label: "Transactions", value: String(result.summary.transactionCount), tone: "neutral" },
             ].map((card) => (
               <div key={card.label} className="glass rounded-xl p-4">
-                <span className="text-xs text-warm-black/40 dark:text-warm-white/30 font-mono uppercase tracking-wider">
+                <span className="text-xs text-warm-black/40 dark:text-zinc-400 font-mono uppercase tracking-wider">
                   {card.label}
                 </span>
                 <p
@@ -283,7 +314,7 @@ export default function UploadPage() {
             <div className="space-y-2">
               {result.categoryBreakdown.slice(0, 8).map((cat) => (
                 <div key={cat.category} className="flex items-center gap-3">
-                  <span className="w-28 text-sm text-warm-black/60 dark:text-warm-white/40 truncate">
+                  <span className="w-28 text-sm text-warm-black/60 dark:text-zinc-300 truncate">
                     {cat.category}
                   </span>
                   <div className="flex-1 h-2 bg-warm-gray dark:bg-warm-white/5 rounded-full overflow-hidden">
@@ -292,10 +323,10 @@ export default function UploadPage() {
                       style={{ width: `${cat.percentage}%` }}
                     />
                   </div>
-                  <span className="font-mono text-xs text-warm-black/50 dark:text-warm-white/30 w-16 text-right">
+                  <span className="font-mono text-xs text-warm-black/50 dark:text-zinc-400 w-16 text-right">
                     {formatCurrency(cat.total)}
                   </span>
-                  <span className="font-mono text-xs text-warm-black/30 dark:text-warm-white/20 w-10 text-right">
+                  <span className="font-mono text-xs text-warm-black/30 dark:text-zinc-600 w-10 text-right">
                     {cat.percentage.toFixed(0)}%
                   </span>
                 </div>
@@ -351,12 +382,12 @@ export default function UploadPage() {
           {/* Missing data */}
           {isBusiness && businessInsights && businessInsights.missing_data.length > 0 && (
             <div className="glass rounded-xl p-6 border border-dashed border-warm-gray dark:border-warm-white/10">
-              <h3 className="font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider mb-3">
+              <h3 className="font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider mb-3">
                 To Improve This Analysis
               </h3>
               <ul className="space-y-1.5">
                 {businessInsights.missing_data.map((d, i) => (
-                  <li key={i} className="text-xs text-warm-black/45 dark:text-warm-white/35 flex gap-2">
+                  <li key={i} className="text-xs text-warm-black/45 dark:text-zinc-400 flex gap-2">
                     <span className="text-warm-black/20 dark:text-warm-white/15 shrink-0">-</span>
                     <span className="font-medium">{d.field}:</span> {d.why_it_would_help}
                   </li>
@@ -375,10 +406,10 @@ export default function UploadPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-warm-gray dark:border-warm-white/5">
-                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider">Date</th>
-                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider">Description</th>
-                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider">Category</th>
-                      <th className="text-right py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider">Amount</th>
+                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Date</th>
+                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Description</th>
+                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Category</th>
+                      <th className="text-right py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -387,10 +418,10 @@ export default function UploadPage() {
                         key={tx.id}
                         className="border-b border-warm-gray/50 dark:border-warm-white/[0.03] hover:bg-warm-gray/30 dark:hover:bg-white/[0.02] transition-colors"
                       >
-                        <td className="py-2.5 px-4 font-mono text-xs text-warm-black/45 dark:text-warm-white/35">{tx.date}</td>
-                        <td className="py-2.5 px-4 text-warm-black/80 dark:text-warm-white/70 max-w-xs truncate">{tx.description}</td>
+                        <td className="py-2.5 px-4 font-mono text-xs text-warm-black/45 dark:text-zinc-400">{tx.date}</td>
+                        <td className="py-2.5 px-4 text-warm-black/80 dark:text-zinc-100 max-w-xs truncate">{tx.description}</td>
                         <td className="py-2.5 px-4">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-warm-gray dark:bg-white/5 text-warm-black/45 dark:text-warm-white/35">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-warm-gray dark:bg-white/5 text-warm-black/45 dark:text-zinc-400">
                             {tx.category || "Other"}
                           </span>
                         </td>
@@ -414,7 +445,7 @@ export default function UploadPage() {
                 setSelectedInsight(null);
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
-              className="px-6 py-2.5 rounded-full border border-warm-gray dark:border-warm-white/10 text-sm font-medium text-warm-black/60 dark:text-warm-white/40 hover:bg-warm-gray/50 dark:hover:bg-white/5 transition-colors"
+              className="px-6 py-2.5 rounded-full border border-warm-gray dark:border-warm-white/10 text-sm font-medium text-warm-black/60 dark:text-zinc-300 hover:bg-warm-gray/50 dark:hover:bg-white/5 transition-colors"
             >
               Upload another statement
             </button>
@@ -450,7 +481,7 @@ function PersonalInsightsView({ insights }: { insights: AIInsights }) {
     <div className="grid sm:grid-cols-2 gap-4">
       <div className="glass rounded-xl p-6 sm:col-span-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-warm-black/40 dark:text-warm-white/30 font-mono uppercase tracking-wider">
+          <span className="text-sm text-warm-black/40 dark:text-zinc-400 font-mono uppercase tracking-wider">
             Cash Flow Health
           </span>
           <span
@@ -467,18 +498,18 @@ function PersonalInsightsView({ insights }: { insights: AIInsights }) {
             {insights.cashFlowHealth}
           </span>
         </div>
-        <p className="mt-3 text-sm text-warm-black/60 dark:text-warm-white/50 leading-relaxed">
+        <p className="mt-3 text-sm text-warm-black/60 dark:text-zinc-200 leading-relaxed">
           {insights.monthlyForecast.narrative}
         </p>
       </div>
 
       <div className="glass rounded-xl p-6">
-        <h3 className="font-mono text-xs text-warm-black/40 dark:text-warm-white/30 uppercase tracking-wider mb-3">
+        <h3 className="font-mono text-xs text-warm-black/40 dark:text-zinc-400 uppercase tracking-wider mb-3">
           Spending Patterns
         </h3>
         <ul className="space-y-2">
           {insights.spendingPatterns.map((p, i) => (
-            <li key={i} className="text-sm text-warm-black/70 dark:text-warm-white/60 flex gap-2">
+            <li key={i} className="text-sm text-warm-black/70 dark:text-zinc-100 flex gap-2">
               <span className="text-amber-500 mt-0.5 shrink-0">-</span>
               {p}
             </li>
@@ -487,12 +518,12 @@ function PersonalInsightsView({ insights }: { insights: AIInsights }) {
       </div>
 
       <div className="glass rounded-xl p-6">
-        <h3 className="font-mono text-xs text-warm-black/40 dark:text-warm-white/30 uppercase tracking-wider mb-3">
+        <h3 className="font-mono text-xs text-warm-black/40 dark:text-zinc-400 uppercase tracking-wider mb-3">
           Savings Opportunities
         </h3>
         <ul className="space-y-2">
           {insights.savingsOpportunities.map((s, i) => (
-            <li key={i} className="text-sm text-warm-black/70 dark:text-warm-white/60 flex gap-2">
+            <li key={i} className="text-sm text-warm-black/70 dark:text-zinc-100 flex gap-2">
               <span className="text-sage-600 dark:text-sage-400 mt-0.5 shrink-0">+</span>
               {s}
             </li>
@@ -525,27 +556,27 @@ function BusinessSpendReviewView({
             Executive Summary
           </span>
         </div>
-        <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed mb-4">
+        <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed mb-4">
           {executive_summary.plain_english_summary}
         </p>
         <div className="grid sm:grid-cols-3 gap-3">
           <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3 text-center">
-            <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Items to Review</p>
+            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Items to Review</p>
             <p className="text-xl font-display font-bold text-warm-black dark:text-warm-white mt-1">{executive_summary.items_to_review}</p>
           </div>
           <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3 text-center">
-            <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Insights Found</p>
+            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Insights Found</p>
             <p className="text-xl font-display font-bold text-warm-black dark:text-warm-white mt-1">{items.length}</p>
           </div>
           <div className="bg-sage-100/50 dark:bg-sage-900/10 rounded-lg p-3 text-center">
-            <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Est. Monthly Savings</p>
+            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Est. Monthly Savings</p>
             <p className="text-xl font-display font-bold text-sage-700 dark:text-sage-400 mt-1">{formatCurrency(executive_summary.estimated_monthly_savings.amount)}</p>
           </div>
         </div>
         {executive_summary.top_3_findings.length > 0 && (
           <div className="mt-4 space-y-1">
-            <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Top Findings</p>
-            <ol className="list-decimal list-inside text-sm text-warm-black/60 dark:text-warm-white/50 space-y-0.5">
+            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Top Findings</p>
+            <ol className="list-decimal list-inside text-sm text-warm-black/60 dark:text-zinc-200 space-y-0.5">
               {executive_summary.top_3_findings.map((f, i) => (
                 <li key={i}>{f.title}</li>
               ))}
@@ -560,7 +591,7 @@ function BusinessSpendReviewView({
           {insights.quick_actions.map((action, i) => (
             <span
               key={i}
-              className="px-3 py-1.5 rounded-full text-xs font-medium bg-warm-gray/50 dark:bg-white/5 text-warm-black/50 dark:text-warm-white/40"
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-warm-gray/50 dark:bg-white/5 text-warm-black/50 dark:text-zinc-300"
             >
               {action.label}
             </span>
@@ -571,13 +602,13 @@ function BusinessSpendReviewView({
       {/* Insight cards */}
       {items.length === 0 ? (
         <div className="glass rounded-xl p-8 text-center">
-          <p className="text-sm text-warm-black/40 dark:text-warm-white/30">
+          <p className="text-sm text-warm-black/40 dark:text-zinc-400">
             No significant spending patterns detected. Your business finances appear well-controlled.
           </p>
         </div>
       ) : (
         <div>
-          <h3 className="font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider mb-3">
+          <h3 className="font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider mb-3">
             Detailed Findings ({items.length})
           </h3>
           <div className="space-y-3">

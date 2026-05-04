@@ -25,7 +25,7 @@ export function OwnerReviewPack({ items, onItemClick }: OwnerReviewPackProps) {
             {items.length} items
           </span>
         </div>
-        <p className="text-xs text-warm-black/40 dark:text-warm-white/30 mt-1.5">
+        <p className="text-xs text-warm-black/40 dark:text-zinc-400 mt-1.5">
           Prioritised list of items to check. Each item is linked to a specific finding and includes the amount, reason, and a question to ask.
         </p>
       </div>
@@ -53,7 +53,7 @@ export function OwnerReviewPack({ items, onItemClick }: OwnerReviewPackProps) {
                   <span className="font-mono text-sm font-medium text-red-500">
                     {formatCurrency(item.amount)}
                   </span>
-                  <span className="text-xs text-warm-black/40 dark:text-warm-white/30">
+                  <span className="text-xs text-warm-black/40 dark:text-zinc-400">
                     {item.reason}
                   </span>
                 </div>
@@ -62,7 +62,7 @@ export function OwnerReviewPack({ items, onItemClick }: OwnerReviewPackProps) {
                   <svg className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="text-xs text-warm-black/50 dark:text-warm-white/40 italic leading-relaxed">
+                  <p className="text-xs text-warm-black/50 dark:text-zinc-300 italic leading-relaxed">
                     &ldquo;{item.suggested_question}&rdquo;
                   </p>
                 </div>

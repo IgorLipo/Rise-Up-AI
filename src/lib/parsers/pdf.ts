@@ -95,7 +95,7 @@ const TX_PREFIXES = [
 // overrun into the next transaction, a date header, or a page boundary.
 const TX_RE = new RegExp(
   `(${TX_PREFIXES.join("|")})\\s+` +
-    `((?:(?!${TX_PREFIXES.join("|")}|\\d{1,2}\\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)|RETSTMT|Account Name|BROUGHT FORWARD|Take control|Switching|Need help|Statement Abbrev|How to contact|Important info|Dispute Resol).)*?)` +
+    `((?:(?!${TX_PREFIXES.join("|")}|\\d{1,2}\\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\\b|RETSTMT|Account Name|BROUGHT FORWARD|Take control|Switching|Need help|Statement Abbrev|How to contact|Important info|Dispute Resol).)*?)` +
     `([\\d,]+\\.[0-9]{2})\\s+([\\d,]+\\.[0-9]{2})`,
   "gi"
 );
@@ -131,8 +131,12 @@ function tryNatWestContinuous(text: string): Transaction[] {
     if (description.length < 2) continue;
     if (/^(?:MR|MS|MRS)\s+[A-Z]/i.test(description)) continue;
 
+    // Only card transaction refunds are genuine credits (merchant returns money).
+    // OnLine Transaction / Direct Debit "refunds" are payments OUT to someone —
+    // the word "refund" in the description just names the purpose of the payment.
     const isCredit =
-      prefix === "Automated Credit" || /\bREFUND\b/i.test(description);
+      prefix === "Automated Credit" ||
+      (prefix === "Card Transaction" && /\bREFUND\b/i.test(description));
 
     transactions.push({
       id: crypto.randomUUID(),
@@ -155,7 +159,7 @@ function findLatestDate(
 ): string | null {
   // Find all date-like patterns in the text before this transaction
   const dateRe =
-    /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(?:\s+\d{4})?)\s*/gi;
+    /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b(?:\s+\d{4})?)\s*/gi;
   const dates: Array<{ date: string; pos: number }> = [];
   let dm: RegExpExecArray | null;
   while ((dm = dateRe.exec(textBefore)) !== null) {

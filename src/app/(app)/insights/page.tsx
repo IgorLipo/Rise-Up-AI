@@ -71,7 +71,7 @@ export default function InsightsPage() {
           <h1 className="font-display text-2xl font-bold text-warm-black dark:text-warm-white mb-4">
             No insights yet
           </h1>
-          <p className="text-warm-black/50 dark:text-warm-white/40 mb-6">
+          <p className="text-warm-black/50 dark:text-zinc-300 mb-6">
             Upload a statement to get AI-powered financial insights.
           </p>
           <Link
@@ -96,7 +96,7 @@ export default function InsightsPage() {
           <h1 className="font-display text-3xl font-bold text-warm-black dark:text-warm-white">
             Business Spend Review
           </h1>
-          <p className="mt-1 text-warm-black/45 dark:text-warm-white/35">
+          <p className="mt-1 text-warm-black/45 dark:text-zinc-400">
             Forensic analysis of your business bank statement.
           </p>
         </div>
@@ -108,32 +108,32 @@ export default function InsightsPage() {
               Executive Summary
             </span>
           </div>
-          <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed mb-6">
+          <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed mb-6">
             {executive_summary.plain_english_summary}
           </p>
           <div className="grid sm:grid-cols-3 gap-4">
             <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-xl p-4 text-center">
-              <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Items to Review</p>
+              <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Items to Review</p>
               <p className="text-3xl font-display font-bold text-warm-black dark:text-warm-white mt-2">{executive_summary.items_to_review}</p>
             </div>
             <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-xl p-4 text-center">
-              <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Insights Found</p>
+              <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Insights Found</p>
               <p className="text-3xl font-display font-bold text-warm-black dark:text-warm-white mt-2">{items.length}</p>
             </div>
             <div className="bg-sage-100/50 dark:bg-sage-900/10 rounded-xl p-4 text-center">
-              <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">Est. Monthly Savings</p>
+              <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Est. Monthly Savings</p>
               <p className="text-3xl font-display font-bold text-sage-700 dark:text-sage-400 mt-2">{formatCurrency(executive_summary.estimated_monthly_savings.amount)}</p>
             </div>
           </div>
           {executive_summary.top_3_findings.length > 0 && (
             <div className="mt-6 space-y-2">
-              <p className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider mb-3">Top 3 Findings</p>
+              <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider mb-3">Top 3 Findings</p>
               {executive_summary.top_3_findings.map((f, i) => (
                 <div key={i} className="flex items-start gap-3 text-sm">
                   <span className="font-display font-bold text-amber-500 shrink-0">{i + 1}.</span>
                   <div>
-                    <p className="text-warm-black/70 dark:text-warm-white/60 font-medium">{f.title}</p>
-                    <p className="text-xs text-warm-black/40 dark:text-warm-white/30 mt-0.5">
+                    <p className="text-warm-black/70 dark:text-zinc-100 font-medium">{f.title}</p>
+                    <p className="text-xs text-warm-black/40 dark:text-zinc-400 mt-0.5">
                       {f.why_it_matters} — {formatCurrency(f.amount_at_risk)} at risk
                     </p>
                   </div>
@@ -149,7 +149,7 @@ export default function InsightsPage() {
             {quick_actions.map((action, i) => (
               <span
                 key={i}
-                className="px-3 py-1.5 rounded-full text-xs font-medium bg-warm-gray/50 dark:bg-white/5 text-warm-black/50 dark:text-warm-white/40"
+                className="px-3 py-1.5 rounded-full text-xs font-medium bg-warm-gray/50 dark:bg-white/5 text-warm-black/50 dark:text-zinc-300"
               >
                 {action.label}
               </span>
@@ -164,7 +164,7 @@ export default function InsightsPage() {
           </h2>
           {items.length === 0 ? (
             <div className="glass rounded-xl p-8 text-center">
-              <p className="text-sm text-warm-black/40 dark:text-warm-white/30">
+              <p className="text-sm text-warm-black/40 dark:text-zinc-400">
                 No significant spending patterns detected. Your business finances appear well-controlled.
               </p>
             </div>
@@ -209,7 +209,7 @@ export default function InsightsPage() {
             </h2>
             <ul className="space-y-2">
               {businessInsights.missing_data.map((d, i) => (
-                <li key={i} className="text-sm text-warm-black/45 dark:text-warm-white/35 flex gap-2">
+                <li key={i} className="text-sm text-warm-black/45 dark:text-zinc-400 flex gap-2">
                   <span className="text-warm-black/20 dark:text-warm-white/15 shrink-0">-</span>
                   <span className="font-medium">{d.field}:</span> {d.why_it_would_help}
                 </li>
@@ -243,7 +243,7 @@ export default function InsightsPage() {
         <h1 className="font-display text-3xl font-bold text-warm-black dark:text-warm-white">
           AI-powered insights
         </h1>
-        <p className="mt-1 text-warm-black/45 dark:text-warm-white/35">
+        <p className="mt-1 text-warm-black/45 dark:text-zinc-400">
           Automated analysis of your financial patterns.
         </p>
       </div>
@@ -252,7 +252,7 @@ export default function InsightsPage() {
       <div className="glass rounded-2xl p-8">
         <div className="flex items-center justify-between">
           <div>
-            <span className="font-mono text-xs text-warm-black/35 dark:text-warm-white/25 uppercase tracking-wider">
+            <span className="font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">
               Cash Flow Health
             </span>
             <p className="font-display text-4xl font-bold mt-2 text-warm-black dark:text-warm-white capitalize">
@@ -299,7 +299,7 @@ export default function InsightsPage() {
             { label: "Projected Balance", value: formatCurrency(personalInsights.monthlyForecast.projectedBalance), tone: personalInsights.monthlyForecast.projectedBalance >= 0 ? "positive" : "negative" },
           ].map((m) => (
             <div key={m.label} className="text-center p-4 rounded-xl bg-warm-gray/30 dark:bg-white/[0.02]">
-              <span className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+              <span className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">
                 {m.label}
               </span>
               <p
@@ -313,7 +313,7 @@ export default function InsightsPage() {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+          <span className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">
             Confidence
           </span>
           <div className="flex-1 h-1.5 bg-warm-gray dark:bg-white/5 rounded-full overflow-hidden">
@@ -322,11 +322,11 @@ export default function InsightsPage() {
               style={{ width: `${(personalInsights.monthlyForecast.confidence * 100).toFixed(0)}%` }}
             />
           </div>
-          <span className="font-mono text-xs text-warm-black/45 dark:text-warm-white/35">
+          <span className="font-mono text-xs text-warm-black/45 dark:text-zinc-400">
             {(personalInsights.monthlyForecast.confidence * 100).toFixed(0)}%
           </span>
         </div>
-        <p className="mt-4 text-sm text-warm-black/60 dark:text-warm-white/50 leading-relaxed">
+        <p className="mt-4 text-sm text-warm-black/60 dark:text-zinc-200 leading-relaxed">
           {personalInsights.monthlyForecast.narrative}
         </p>
       </div>
@@ -338,7 +338,7 @@ export default function InsightsPage() {
         </h2>
         <ul className="space-y-3">
           {personalInsights.spendingPatterns.map((p, i) => (
-            <li key={i} className="flex gap-3 text-sm text-warm-black/70 dark:text-warm-white/60">
+            <li key={i} className="flex gap-3 text-sm text-warm-black/70 dark:text-zinc-100">
               <span className="text-amber-500 shrink-0 mt-0.5">-</span>
               <span>{p}</span>
             </li>
@@ -354,14 +354,14 @@ export default function InsightsPage() {
         {personalInsights.unusualActivity.length > 0 ? (
           <ul className="space-y-3">
             {personalInsights.unusualActivity.map((u, i) => (
-              <li key={i} className="flex gap-3 text-sm text-warm-black/70 dark:text-warm-white/60">
+              <li key={i} className="flex gap-3 text-sm text-warm-black/70 dark:text-zinc-100">
                 <span className="text-red-400 shrink-0 mt-0.5">!</span>
                 <span>{u}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-warm-black/40 dark:text-warm-white/30">
+          <p className="text-sm text-warm-black/40 dark:text-zinc-400">
             No unusual activity detected in your statements.
           </p>
         )}
@@ -374,7 +374,7 @@ export default function InsightsPage() {
         </h2>
         <ul className="space-y-3">
           {personalInsights.savingsOpportunities.map((s, i) => (
-            <li key={i} className="flex gap-3 text-sm text-warm-black/70 dark:text-warm-white/60">
+            <li key={i} className="flex gap-3 text-sm text-warm-black/70 dark:text-zinc-100">
               <span className="text-sage-600 dark:text-sage-400 shrink-0 mt-0.5">+</span>
               <span>{s}</span>
             </li>
@@ -393,7 +393,7 @@ export default function InsightsPage() {
               <span className="font-display text-2xl font-bold text-amber-300 dark:text-amber-600 shrink-0">
                 {i + 1}
               </span>
-              <span className="text-sm text-warm-black/70 dark:text-warm-white/60 pt-1">{r}</span>
+              <span className="text-sm text-warm-black/70 dark:text-zinc-100 pt-1">{r}</span>
             </li>
           ))}
         </ol>

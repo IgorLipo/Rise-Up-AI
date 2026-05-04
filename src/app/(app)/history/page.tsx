@@ -1,14 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
-import { listDocuments } from "@/lib/db";
+import { listDocuments, getDocument } from "@/lib/db";
 import { DocumentHistoryCard } from "@/components/history/document-history-card";
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [entries, setEntries] = useState<DocumentHistoryEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     listDocuments()
@@ -23,6 +27,28 @@ export default function HistoryPage() {
       .finally(() => setLoaded(true));
   }, []);
 
+  const handleEntryClick = useCallback(async (entry: DocumentHistoryEntry) => {
+    setLoadingId(entry.id);
+    try {
+      const doc = await getDocument(entry.id);
+      if (doc) {
+        sessionStorage.setItem("statementData", JSON.stringify(doc.statement_data));
+        if (doc.insights) {
+          sessionStorage.setItem("statementInsights", JSON.stringify(doc.insights));
+        }
+        sessionStorage.setItem("analysisMode", doc.mode);
+        toast.success(`Loaded ${doc.filename}`);
+        router.push("/dashboard");
+      } else {
+        toast.error("Document not found in database");
+      }
+    } catch {
+      toast.error("Failed to load document");
+    } finally {
+      setLoadingId(null);
+    }
+  }, [router]);
+
   if (!loaded) return null;
 
   return (
@@ -31,8 +57,8 @@ export default function HistoryPage() {
         <h1 className="font-display text-3xl font-bold text-warm-black dark:text-warm-white">
           Document history
         </h1>
-        <p className="mt-1 text-warm-black/45 dark:text-warm-white/35">
-          Previously uploaded statements and their insights.
+        <p className="mt-1 text-warm-black/45 dark:text-zinc-400">
+          Previously uploaded statements and their full reports — click any to restore.
         </p>
       </div>
 
@@ -46,7 +72,7 @@ export default function HistoryPage() {
           <h2 className="font-display text-xl font-semibold text-warm-black dark:text-warm-white mb-2">
             No document history
           </h2>
-          <p className="text-sm text-warm-black/40 dark:text-warm-white/30 mb-6">
+          <p className="text-sm text-warm-black/40 dark:text-zinc-400 mb-6">
             Upload a bank statement to see it here.
           </p>
           <Link
@@ -62,9 +88,8 @@ export default function HistoryPage() {
             <DocumentHistoryCard
               key={entry.id}
               entry={entry}
-              onClick={() => {
-                // For now, navigate to dashboard — in future, restore session from history
-              }}
+              isLoading={loadingId === entry.id}
+              onClick={() => handleEntryClick(entry)}
             />
           ))}
         </div>

@@ -16,7 +16,7 @@ export function FloatingBack() {
       className="fixed top-4 left-4 z-50 w-9 h-9 md:w-10 md:h-10 rounded-full glass flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 group"
     >
       <svg
-        className="w-4 h-4 text-warm-black/50 dark:text-warm-white/50 group-hover:text-warm-black dark:group-hover:text-warm-white transition-colors"
+        className="w-4 h-4 text-warm-black/50 dark:text-zinc-200 group-hover:text-warm-black dark:group-hover:text-warm-white transition-colors"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"

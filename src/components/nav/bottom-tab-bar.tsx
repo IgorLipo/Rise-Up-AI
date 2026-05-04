@@ -46,8 +46,9 @@ export function BottomTabBar() {
   const pathname = usePathname();
 
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 glass border-t border-warm-gray dark:border-warm-white/5 safe-area-bottom">
-      <div className="flex items-center justify-around h-16 px-2">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50">
+      <div className="absolute inset-0 bg-black/90 backdrop-blur-2xl border-t border-white/[0.04]" />
+      <div className="relative flex items-center justify-around h-16 px-2 safe-area-bottom">
         {TABS.map((tab) => {
           const active = pathname === tab.href || (tab.href === "/dashboard" && pathname === "/");
           return (
@@ -56,12 +57,12 @@ export function BottomTabBar() {
               href={tab.href}
               className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors ${
                 active
-                  ? "text-amber-600 dark:text-amber-500"
-                  : "text-warm-black/30 dark:text-warm-white/20 hover:text-warm-black/50 dark:hover:text-warm-white/40"
+                  ? "text-amber-400"
+                  : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
               {tab.icon(active)}
-              <span className={`text-[10px] font-medium tracking-wide ${active ? "opacity-100" : "opacity-60"}`}>
+              <span className={`text-[10px] font-medium tracking-wide ${active ? "opacity-100" : "opacity-50"}`}>
                 {tab.label}
               </span>
             </Link>

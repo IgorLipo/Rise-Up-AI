@@ -17,7 +17,7 @@ const SEVERITY_BADGE: Record<string, string> = {
 const CONFIDENCE_BADGE: Record<string, string> = {
   High: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
   Medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  Low: "bg-warm-gray text-warm-black/50 dark:bg-white/5 dark:text-warm-white/40",
+  Low: "bg-warm-gray text-warm-black/50 dark:bg-white/5 dark:text-zinc-300",
 };
 
 interface InsightDrawerProps {
@@ -95,20 +95,20 @@ export function InsightDrawer({
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${CONFIDENCE_BADGE[insight.confidence] || ""}`}>
                 {insight.confidence}
               </span>
-              <span className="text-xs text-warm-black/30 dark:text-warm-white/25 font-mono">
+              <span className="text-xs text-warm-black/30 dark:text-zinc-500 font-mono">
                 {insight.category}
               </span>
             </div>
             <h2 className="font-display text-lg font-bold text-warm-black dark:text-warm-white leading-snug">
               {insight.short_title}
             </h2>
-            <p className="text-sm text-warm-black/50 dark:text-warm-white/40 mt-1">
+            <p className="text-sm text-warm-black/50 dark:text-zinc-300 mt-1">
               {insight.one_line_summary}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-warm-black/40 dark:text-warm-white/30 hover:bg-warm-gray dark:hover:bg-white/5 transition-colors"
+            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-warm-black/40 dark:text-zinc-400 hover:bg-warm-gray dark:hover:bg-white/5 transition-colors"
             aria-label="Close drawer"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -126,7 +126,7 @@ export function InsightDrawer({
               className={`flex-1 py-2.5 text-xs font-medium transition-colors relative ${
                 activeTab === tab
                   ? "text-amber-600 dark:text-amber-500"
-                  : "text-warm-black/40 dark:text-warm-white/30 hover:text-warm-black/60 dark:hover:text-warm-white/50"
+                  : "text-warm-black/40 dark:text-zinc-400 hover:text-warm-black/60 dark:hover:text-warm-white/50"
               }`}
             >
               {tab}
@@ -144,10 +144,10 @@ export function InsightDrawer({
             <div className="space-y-5">
               {insight.drilldown_sections?.map((section, i) => (
                 <div key={i}>
-                  <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                  <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                     {section.title}
                   </h3>
-                  <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed">
+                  <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed">
                     {section.content}
                   </p>
                 </div>
@@ -156,36 +156,36 @@ export function InsightDrawer({
               {(!insight.drilldown_sections || insight.drilldown_sections.length === 0) && (
                 <>
                   <div>
-                    <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                    <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                       What triggered this?
                     </h3>
-                    <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed">
+                    <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed">
                       {insight.why_flagged}
                     </p>
                   </div>
                   <div>
-                    <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                    <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                       Why this matters
                     </h3>
-                    <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed">
+                    <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed">
                       {insight.why_it_matters}
                     </p>
                   </div>
                   {insight.possible_legitimate_explanation && (
                     <div>
-                      <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                      <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                         Possible legitimate explanation
                       </h3>
-                      <p className="text-sm text-warm-black/60 dark:text-warm-white/50 leading-relaxed italic border-l-2 border-amber-300 dark:border-amber-700 pl-3">
+                      <p className="text-sm text-warm-black/60 dark:text-zinc-200 leading-relaxed italic border-l-2 border-amber-300 dark:border-amber-700 pl-3">
                         {insight.possible_legitimate_explanation}
                       </p>
                     </div>
                   )}
                   <div>
-                    <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                    <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                       Recommended action
                     </h3>
-                    <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed">
+                    <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed">
                       {insight.recommended_action}
                     </p>
                   </div>
@@ -195,7 +195,7 @@ export function InsightDrawer({
               {/* Impact estimates */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3">
-                  <span className="text-[10px] text-warm-black/30 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+                  <span className="text-[10px] text-warm-black/30 dark:text-zinc-500 font-mono uppercase tracking-wider">
                     Amount at risk
                   </span>
                   <p className="font-mono text-lg font-medium text-red-500 mt-0.5">
@@ -203,7 +203,7 @@ export function InsightDrawer({
                   </p>
                 </div>
                 <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3">
-                  <span className="text-[10px] text-warm-black/30 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+                  <span className="text-[10px] text-warm-black/30 dark:text-zinc-500 font-mono uppercase tracking-wider">
                     Est. annual impact
                   </span>
                   <p className="font-mono text-lg font-medium text-sage-600 dark:text-sage-400 mt-0.5">
@@ -218,47 +218,47 @@ export function InsightDrawer({
           {activeTab === "Evidence" && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Merchant names
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
                   {insight.evidence?.merchant_names?.map((m) => (
-                    <span key={m} className="px-2 py-1 rounded-md text-xs bg-warm-gray/60 dark:bg-white/5 text-warm-black/60 dark:text-warm-white/50">
+                    <span key={m} className="px-2 py-1 rounded-md text-xs bg-warm-gray/60 dark:bg-white/5 text-warm-black/60 dark:text-zinc-200">
                       {m}
                     </span>
-                  )) || <span className="text-sm text-warm-black/35 dark:text-warm-white/25">None listed</span>}
+                  )) || <span className="text-sm text-warm-black/35 dark:text-zinc-500">None listed</span>}
                 </div>
               </div>
 
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Date pattern
                 </h3>
-                <p className="text-sm text-warm-black/60 dark:text-warm-white/50">
+                <p className="text-sm text-warm-black/60 dark:text-zinc-200">
                   {insight.evidence?.date_pattern || "Not specified"}
                 </p>
               </div>
 
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Frequency
                 </h3>
-                <p className="text-sm text-warm-black/60 dark:text-warm-white/50">
+                <p className="text-sm text-warm-black/60 dark:text-zinc-200">
                   {insight.evidence?.frequency || "Not specified"}
                 </p>
               </div>
 
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Amount pattern
                 </h3>
-                <p className="text-sm text-warm-black/60 dark:text-warm-white/50">
+                <p className="text-sm text-warm-black/60 dark:text-zinc-200">
                   {insight.evidence?.amount_pattern || "Not specified"}
                 </p>
               </div>
 
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Total value
                 </h3>
                 <p className="font-mono text-lg font-medium text-warm-black dark:text-warm-white">
@@ -267,12 +267,12 @@ export function InsightDrawer({
               </div>
 
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Detection cases
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
                   {insight.detection_case_ids?.map((id) => (
-                    <span key={id} className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-gray/50 dark:bg-white/5 text-warm-black/40 dark:text-warm-white/30">
+                    <span key={id} className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-gray/50 dark:bg-white/5 text-warm-black/40 dark:text-zinc-400">
                       Case #{id}
                     </span>
                   ))}
@@ -280,7 +280,7 @@ export function InsightDrawer({
               </div>
 
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   UI badges
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
@@ -302,25 +302,25 @@ export function InsightDrawer({
                   <h3 className="font-medium text-sm text-warm-black dark:text-warm-white mb-1">
                     {group.group_title}
                   </h3>
-                  <p className="text-xs text-warm-black/40 dark:text-warm-white/30 mb-3">
+                  <p className="text-xs text-warm-black/40 dark:text-zinc-400 mb-3">
                     {group.group_reason} — {group.transaction_count} transaction(s), {formatCurrency(group.total_value)}
                   </p>
                   <div className="bg-warm-gray/20 dark:bg-white/[0.02] rounded-lg overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-warm-gray dark:border-warm-white/5">
-                          <th className="text-left py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-warm-white/20 uppercase">Date</th>
-                          <th className="text-left py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-warm-white/20 uppercase">Merchant</th>
-                          <th className="text-left py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-warm-white/20 uppercase">Description</th>
-                          <th className="text-right py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-warm-white/20 uppercase">Amount</th>
+                          <th className="text-left py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-zinc-600 uppercase">Date</th>
+                          <th className="text-left py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-zinc-600 uppercase">Merchant</th>
+                          <th className="text-left py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-zinc-600 uppercase">Description</th>
+                          <th className="text-right py-2 px-3 font-mono text-[10px] text-warm-black/30 dark:text-zinc-600 uppercase">Amount</th>
                         </tr>
                       </thead>
                       <tbody>
                         {group.transactions.map((tx) => (
                           <tr key={tx.id} className="border-b border-warm-gray/20 dark:border-warm-white/[0.01]">
-                            <td className="py-1.5 px-3 font-mono text-warm-black/40 dark:text-warm-white/30">{tx.date}</td>
-                            <td className="py-1.5 px-3 text-warm-black/60 dark:text-warm-white/50 max-w-[100px] truncate">{tx.merchant}</td>
-                            <td className="py-1.5 px-3 text-warm-black/45 dark:text-warm-white/40 max-w-[120px] truncate">{tx.description}</td>
+                            <td className="py-1.5 px-3 font-mono text-warm-black/40 dark:text-zinc-400">{tx.date}</td>
+                            <td className="py-1.5 px-3 text-warm-black/60 dark:text-zinc-200 max-w-[100px] truncate">{tx.merchant}</td>
+                            <td className="py-1.5 px-3 text-warm-black/45 dark:text-zinc-300 max-w-[120px] truncate">{tx.description}</td>
                             <td className={`py-1.5 px-3 text-right font-mono ${tx.direction === "income" ? "text-sage-600 dark:text-sage-400" : "text-red-500"}`}>
                               {tx.direction === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
                             </td>
@@ -333,7 +333,7 @@ export function InsightDrawer({
               ))}
 
               {(!insight.grouped_transactions || insight.grouped_transactions.length === 0) && (
-                <p className="text-sm text-warm-black/40 dark:text-warm-white/30 text-center py-8">
+                <p className="text-sm text-warm-black/40 dark:text-zinc-400 text-center py-8">
                   No grouped transactions available for this insight.
                 </p>
               )}
@@ -343,47 +343,47 @@ export function InsightDrawer({
           {/* Tab: Similar Payments */}
           {activeTab === "Similar Payments" && (
             <div className="space-y-4">
-              <p className="text-sm text-warm-black/50 dark:text-warm-white/40 mb-4">
+              <p className="text-sm text-warm-black/50 dark:text-zinc-300 mb-4">
                 Suggested filters to find similar transactions:
               </p>
               {insight.suggested_filters && (
                 <div className="space-y-3">
                   {insight.suggested_filters.merchant && (
                     <div className="glass rounded-lg p-3">
-                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider">
+                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider">
                         Same merchant
                       </span>
-                      <p className="text-sm text-warm-black/60 dark:text-warm-white/50 mt-0.5">
+                      <p className="text-sm text-warm-black/60 dark:text-zinc-200 mt-0.5">
                         {insight.suggested_filters.merchant}
                       </p>
                     </div>
                   )}
                   {insight.suggested_filters.category && (
                     <div className="glass rounded-lg p-3">
-                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider">
+                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider">
                         Same category
                       </span>
-                      <p className="text-sm text-warm-black/60 dark:text-warm-white/50 mt-0.5">
+                      <p className="text-sm text-warm-black/60 dark:text-zinc-200 mt-0.5">
                         {insight.suggested_filters.category}
                       </p>
                     </div>
                   )}
                   {insight.suggested_filters.cardholder && (
                     <div className="glass rounded-lg p-3">
-                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider">
+                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider">
                         Same cardholder
                       </span>
-                      <p className="text-sm text-warm-black/60 dark:text-warm-white/50 mt-0.5">
+                      <p className="text-sm text-warm-black/60 dark:text-zinc-200 mt-0.5">
                         {insight.suggested_filters.cardholder}
                       </p>
                     </div>
                   )}
                   {insight.suggested_filters.date_from && insight.suggested_filters.date_to && (
                     <div className="glass rounded-lg p-3">
-                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider">
+                      <span className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider">
                         Date range
                       </span>
-                      <p className="text-sm text-warm-black/60 dark:text-warm-white/50 mt-0.5">
+                      <p className="text-sm text-warm-black/60 dark:text-zinc-200 mt-0.5">
                         {insight.suggested_filters.date_from} — {insight.suggested_filters.date_to}
                       </p>
                     </div>
@@ -395,7 +395,7 @@ export function InsightDrawer({
                 (!insight.suggested_filters.merchant &&
                   !insight.suggested_filters.category &&
                   !insight.suggested_filters.cardholder)) && (
-                <p className="text-sm text-warm-black/40 dark:text-warm-white/30 text-center py-8">
+                <p className="text-sm text-warm-black/40 dark:text-zinc-400 text-center py-8">
                   No filter suggestions available for this insight.
                 </p>
               )}
@@ -406,25 +406,25 @@ export function InsightDrawer({
           {activeTab === "Action Plan" && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Recommended action
                 </h3>
-                <p className="text-sm text-warm-black/70 dark:text-warm-white/60 leading-relaxed">
+                <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed">
                   {insight.recommended_action}
                 </p>
               </div>
 
               {/* Owner question */}
               <div>
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-1.5">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-1.5">
                   Question to ask internally
                 </h3>
-                <p className="text-sm text-warm-black/60 dark:text-warm-white/50 italic leading-relaxed border-l-2 border-amber-300 dark:border-amber-700 pl-3">
+                <p className="text-sm text-warm-black/60 dark:text-zinc-200 italic leading-relaxed border-l-2 border-amber-300 dark:border-amber-700 pl-3">
                   &ldquo;{insight.owner_question}&rdquo;
                 </p>
                 <button
                   onClick={handleCopyQuestion}
-                  className="mt-2 px-3 py-1.5 rounded-full text-xs font-medium border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-warm-white/40 hover:bg-warm-gray/30 dark:hover:bg-white/5 transition-colors"
+                  className="mt-2 px-3 py-1.5 rounded-full text-xs font-medium border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-zinc-300 hover:bg-warm-gray/30 dark:hover:bg-white/5 transition-colors"
                 >
                   Copy question
                 </button>
@@ -432,7 +432,7 @@ export function InsightDrawer({
 
               {/* Review actions */}
               <div className="space-y-2 pt-3 border-t border-warm-gray dark:border-warm-white/5">
-                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-warm-white/25 uppercase tracking-wider mb-2">
+                <h3 className="font-mono text-[10px] text-warm-black/30 dark:text-zinc-500 uppercase tracking-wider mb-2">
                   Review status
                 </h3>
                 <div className="flex flex-wrap gap-2">
@@ -441,7 +441,7 @@ export function InsightDrawer({
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                       isReviewed
                         ? "bg-sage-100 dark:bg-sage-900/30 text-sage-700 dark:text-sage-400"
-                        : "border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-warm-white/40 hover:bg-warm-gray/30 dark:hover:bg-white/5"
+                        : "border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-zinc-300 hover:bg-warm-gray/30 dark:hover:bg-white/5"
                     }`}
                   >
                     {isReviewed ? "✓ Reviewed" : "Mark as reviewed"}
@@ -451,7 +451,7 @@ export function InsightDrawer({
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                       isLegitimate
                         ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                        : "border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-warm-white/40 hover:bg-warm-gray/30 dark:hover:bg-white/5"
+                        : "border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-zinc-300 hover:bg-warm-gray/30 dark:hover:bg-white/5"
                     }`}
                   >
                     {isLegitimate ? "✓ Legitimate" : "Looks legitimate"}
@@ -461,7 +461,7 @@ export function InsightDrawer({
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                       needsFollowUp
                         ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-                        : "border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-warm-white/40 hover:bg-warm-gray/30 dark:hover:bg-white/5"
+                        : "border border-warm-gray dark:border-warm-white/10 text-warm-black/50 dark:text-zinc-300 hover:bg-warm-gray/30 dark:hover:bg-white/5"
                     }`}
                   >
                     {needsFollowUp ? "⏳ Follow-up" : "Needs follow-up"}
@@ -472,7 +472,7 @@ export function InsightDrawer({
               {/* Impact summary */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3">
-                  <span className="text-[10px] text-warm-black/30 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+                  <span className="text-[10px] text-warm-black/30 dark:text-zinc-500 font-mono uppercase tracking-wider">
                     Monthly impact
                   </span>
                   <p className="font-mono text-lg font-medium text-sage-600 dark:text-sage-400 mt-0.5">
@@ -480,7 +480,7 @@ export function InsightDrawer({
                   </p>
                 </div>
                 <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3">
-                  <span className="text-[10px] text-warm-black/30 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+                  <span className="text-[10px] text-warm-black/30 dark:text-zinc-500 font-mono uppercase tracking-wider">
                     Annual impact
                   </span>
                   <p className="font-mono text-lg font-medium text-sage-600 dark:text-sage-400 mt-0.5">

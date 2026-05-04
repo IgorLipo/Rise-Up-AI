@@ -16,7 +16,7 @@ interface Props {
 export function SpendBreakdownDonut({ data, total }: Props) {
   if (!data.length) {
     return (
-      <div className="flex items-center justify-center h-[260px] text-sm text-warm-black/30 dark:text-warm-white/20">
+      <div className="flex items-center justify-center h-[260px] text-sm text-warm-black/30 dark:text-zinc-600">
         No category data available
       </div>
     );
@@ -58,7 +58,7 @@ export function SpendBreakdownDonut({ data, total }: Props) {
           <span className="text-lg font-display font-bold text-warm-black dark:text-warm-white">
             {formatCurrency(total)}
           </span>
-          <span className="text-[10px] text-warm-black/35 dark:text-warm-white/25 font-mono uppercase tracking-wider">
+          <span className="text-[10px] text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">
             total
           </span>
         </div>
@@ -76,13 +76,13 @@ export function SpendBreakdownDonut({ data, total }: Props) {
                 className="w-2.5 h-2.5 rounded-sm shrink-0"
                 style={{ backgroundColor: COLORS[i % COLORS.length] }}
               />
-              <span className="text-xs text-warm-black/70 dark:text-warm-white/60 flex-1 truncate">
+              <span className="text-xs text-warm-black/70 dark:text-zinc-100 flex-1 truncate">
                 {entry.name}
               </span>
               <span className="text-xs font-mono font-medium text-warm-black dark:text-warm-white tabular-nums">
                 {formatCurrency(entry.value)}
               </span>
-              <span className="text-[10px] font-mono text-warm-black/30 dark:text-warm-white/20 tabular-nums w-8 text-right">
+              <span className="text-[10px] font-mono text-warm-black/30 dark:text-zinc-600 tabular-nums w-8 text-right">
                 {pct}%
               </span>
             </div>
