@@ -27,16 +27,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${playfair.variable} ${jetbrains.variable} h-full antialiased dark bg-zinc-950`}
+      className={`${playfair.variable} ${jetbrains.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-white">
-        <Toaster position="top-center" toastOptions={{
-          style: {
-            background: "#1a1a1a",
-            color: "#faf7f2",
-            border: "1px solid rgba(255,255,255,0.08)",
-          },
-        }} />
+      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
+        <Toaster position="top-center" />
         {children}
       </body>
     </html>
