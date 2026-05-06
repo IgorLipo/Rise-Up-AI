@@ -16,7 +16,6 @@ import { SpendBreakdownDonut } from "@/components/charts/spend-breakdown-donut";
 import { CategoryDetailDrawer } from "@/components/category-detail-drawer";
 import { DocumentHistoryCard } from "@/components/history/document-history-card";
 import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
-import { listDocuments, getDocument } from "@/lib/db";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -44,17 +43,26 @@ export default function DashboardPage() {
     if (rawInsights) setInsights(JSON.parse(rawInsights));
     if (rawMode === "business") setMode("business");
 
-    listDocuments()
-      .then((docs) => {
-        setDocHistory(docs.length > 0 ? docs : getDocumentHistory());
+    // TODO: replace with real companyId from auth once middleware is in place
+    fetch("/api/documents")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) {
+          setDocHistory(json.documents.length > 0 ? json.documents : getDocumentHistory());
+        } else {
+          setDocHistory(getDocumentHistory());
+        }
       })
       .catch(() => setDocHistory(getDocumentHistory()));
   }, []);
 
   const handleHistoryClick = useCallback(async (entry: DocumentHistoryEntry) => {
     try {
-      const doc = await getDocument(entry.id);
-      if (doc) {
+      // TODO: replace with real companyId from auth once middleware is in place
+      const res = await fetch(`/api/documents/${entry.id}`);
+      const json = await res.json();
+      if (json.success && json.document) {
+        const doc = json.document;
         sessionStorage.setItem("statementData", JSON.stringify(doc.statement_data));
         if (doc.insights) {
           sessionStorage.setItem("statementInsights", JSON.stringify(doc.insights));

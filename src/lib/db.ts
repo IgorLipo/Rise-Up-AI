@@ -1,4 +1,6 @@
-import { supabase } from "./supabase";
+import "server-only";
+
+import { createServerSupabase } from "./supabase/server";
 import type { StatementData, AIInsights, SpendReviewResult, AnalysisMode } from "@/types";
 import type { DocumentHistoryEntry } from "./history";
 
@@ -9,6 +11,8 @@ export interface DocumentRecord {
   mode: AnalysisMode;
   statement_data: StatementData;
   insights: AIInsights | SpendReviewResult | null;
+  company_id: string;
+  uploaded_by: string;
 }
 
 export async function saveDocument(
@@ -17,7 +21,10 @@ export async function saveDocument(
   mode: AnalysisMode,
   data: StatementData,
   insights: AIInsights | SpendReviewResult | null,
+  companyId: string,
+  userId: string,
 ): Promise<boolean> {
+  const supabase = await createServerSupabase();
   const { error } = await supabase.from("documents").upsert({
     id,
     filename,
@@ -25,15 +32,19 @@ export async function saveDocument(
     mode,
     statement_data: data as unknown as Record<string, unknown>,
     insights: insights as unknown as Record<string, unknown> | null,
+    company_id: companyId,
+    uploaded_by: userId,
   });
   return !error;
 }
 
-export async function getDocument(id: string): Promise<DocumentRecord | null> {
+export async function getDocument(id: string, companyId: string): Promise<DocumentRecord | null> {
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("documents")
     .select("*")
     .eq("id", id)
+    .eq("company_id", companyId)
     .single();
   if (error || !data) return null;
   return {
@@ -43,13 +54,17 @@ export async function getDocument(id: string): Promise<DocumentRecord | null> {
     mode: data.mode,
     statement_data: data.statement_data as unknown as StatementData,
     insights: data.insights as unknown as AIInsights | SpendReviewResult | null,
+    company_id: data.company_id,
+    uploaded_by: data.uploaded_by,
   };
 }
 
-export async function listDocuments(): Promise<DocumentHistoryEntry[]> {
+export async function listDocuments(companyId: string): Promise<DocumentHistoryEntry[]> {
+  const supabase = await createServerSupabase();
   const { data, error } = await supabase
     .from("documents")
     .select("id, filename, uploaded_at, mode, insights, statement_data")
+    .eq("company_id", companyId)
     .order("uploaded_at", { ascending: false })
     .limit(50);
 

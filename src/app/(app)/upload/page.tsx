@@ -8,7 +8,6 @@ import { InsightCard } from "@/components/insight-card";
 import { InsightDrawer } from "@/components/insight-drawer";
 import { OwnerReviewPack } from "@/components/owner-review-pack";
 import { addDocumentHistory } from "@/lib/history";
-import { saveDocument } from "@/lib/db";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -108,8 +107,19 @@ export default function UploadPage() {
             netFlow: json.data.summary.netFlow,
           });
 
-          // Persist to Supabase
-          saveDocument(docId, file.name, mode, json.data, insightJson.insights).catch(() => {
+          // Persist to Supabase via API route
+          // TODO: replace with real companyId/userId from auth once middleware is in place
+          fetch("/api/documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: docId,
+              filename: file.name,
+              mode,
+              data: json.data,
+              insights: insightJson.insights,
+            }),
+          }).catch(() => {
             // Supabase save is best-effort — don't block the UX
           });
         }

@@ -11,6 +11,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.58",
     "@anthropic-ai/sdk": "^0.92.0",
+    "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
     "ai": "^6.0.174",
     "clsx": "^2.1.1",
@@ -21,6 +22,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
+    "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "unpdf": "^1.6.2",
     "zod": "^4.4.2"

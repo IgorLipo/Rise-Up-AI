@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
-import { listDocuments, getDocument } from "@/lib/db";
 import { DocumentHistoryCard } from "@/components/history/document-history-card";
 
 export default function HistoryPage() {
@@ -15,10 +14,12 @@ export default function HistoryPage() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
-    listDocuments()
-      .then((docs) => {
-        if (docs.length > 0) {
-          setEntries(docs);
+    // TODO: replace with real companyId from auth once middleware is in place
+    fetch("/api/documents")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.documents.length > 0) {
+          setEntries(json.documents);
         } else {
           setEntries(getDocumentHistory());
         }
@@ -30,8 +31,11 @@ export default function HistoryPage() {
   const handleEntryClick = useCallback(async (entry: DocumentHistoryEntry) => {
     setLoadingId(entry.id);
     try {
-      const doc = await getDocument(entry.id);
-      if (doc) {
+      // TODO: replace with real companyId from auth once middleware is in place
+      const res = await fetch(`/api/documents/${entry.id}`);
+      const json = await res.json();
+      if (json.success && json.document) {
+        const doc = json.document;
         sessionStorage.setItem("statementData", JSON.stringify(doc.statement_data));
         if (doc.insights) {
           sessionStorage.setItem("statementInsights", JSON.stringify(doc.insights));
