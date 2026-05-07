@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import type { Transaction, Subcategory } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
+import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
 
 const SUBCATEGORIES: Array<{ value: Subcategory | "all" | "suspicious"; label: string }> = [
   { value: "all", label: "All" },
@@ -112,14 +113,14 @@ function TransactionsPageInner() {
   const filtered = useMemo(() => {
     if (filter === "suspicious") {
       return transactions.filter((tx) => {
-        const core = tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ");
-        return suspiciousMap.has(core);
+        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+        return suspiciousMap.has(key);
       });
     }
     if (filter === "all") return transactions;
     return transactions.filter((tx) => {
-      const core = tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ");
-      const vendor = vendorMap.get(core);
+      const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+      const vendor = vendorMap.get(key);
       if (vendor) return vendor.subcategory === filter;
       const { subcategory } = classifySubcategory(tx.description);
       return subcategory === filter;
@@ -127,13 +128,13 @@ function TransactionsPageInner() {
   }, [transactions, filter, vendorMap, suspiciousMap]);
 
   const matchedVendor = (tx: Transaction): VendorInfo | null => {
-    const core = tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ");
-    return vendorMap.get(core) ?? null;
+    const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    return vendorMap.get(key) ?? null;
   };
 
   const matchedSuspicious = (tx: Transaction): SuspiciousInfo | null => {
-    const core = tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ");
-    return suspiciousMap.get(core) ?? null;
+    const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    return suspiciousMap.get(key) ?? null;
   };
 
   if (loading) {
