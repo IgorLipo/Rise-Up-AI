@@ -7,6 +7,7 @@ import type { Transaction, Subcategory } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
+import { toast } from "sonner";
 
 const SUBCATEGORIES: Array<{ value: Subcategory | "all" | "suspicious"; label: string }> = [
   { value: "all", label: "All" },
@@ -56,6 +57,9 @@ function TransactionsPageInner() {
   );
   const [loading, setLoading] = useState(true);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [correctingTx, setCorrectingTx] = useState<string | null>(null);
+  const [correctionSubcategory, setCorrectionSubcategory] = useState<Subcategory>("one-off");
+  const [savingCorrection, setSavingCorrection] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -135,6 +139,30 @@ function TransactionsPageInner() {
   const matchedSuspicious = (tx: Transaction): SuspiciousInfo | null => {
     const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     return suspiciousMap.get(key) ?? null;
+  };
+
+  const handleCorrect = async (tx: Transaction) => {
+    setSavingCorrection(true);
+    try {
+      const r = await fetch("/api/corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionDescription: tx.description,
+          originalSubcategory: tx.subcategory ?? "one-off",
+          correctedSubcategory: correctionSubcategory,
+          transactionDate: tx.date,
+          transactionAmount: tx.amount,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast.success(`Saved: ${tx.description.slice(0, 40)} → ${correctionSubcategory.replace(/-/g, " ")}`);
+      setCorrectingTx(null);
+    } catch {
+      toast.error("Failed to save correction");
+    } finally {
+      setSavingCorrection(false);
+    }
   };
 
   if (loading) {
@@ -285,6 +313,49 @@ function TransactionsPageInner() {
                         ) : (
                           <div className="text-zinc-400">No vendor intelligence available. Upload more statements to build vendor profiles.</div>
                         )}
+
+                        {/* Correction UI */}
+                        <div className="mt-3 pt-3 border-t border-zinc-200">
+                          {correctingTx === tx.id ? (
+                            <div className="space-y-2">
+                              <div className="text-zinc-500 font-medium text-[11px]">Correct category</div>
+                              <select
+                                value={correctionSubcategory}
+                                onChange={(e) => setCorrectionSubcategory(e.target.value as Subcategory)}
+                                className="w-full text-xs border border-zinc-300 rounded px-2 py-1 bg-white"
+                              >
+                                {SUBCATEGORIES.filter((s) => s.value !== "all" && s.value !== "suspicious").map((s) => (
+                                  <option key={s.value} value={s.value}>{s.label}</option>
+                                ))}
+                              </select>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleCorrect(tx)}
+                                  disabled={savingCorrection}
+                                  className="px-2.5 py-1 rounded text-[11px] font-medium bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
+                                >
+                                  {savingCorrection ? "Saving..." : "Save"}
+                                </button>
+                                <button
+                                  onClick={() => setCorrectingTx(null)}
+                                  className="px-2.5 py-1 rounded text-[11px] text-zinc-500 hover:bg-zinc-200"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setCorrectingTx(tx.id);
+                                setCorrectionSubcategory((vendor?.subcategory as Subcategory) ?? "one-off");
+                              }}
+                              className="text-[11px] text-zinc-400 hover:text-zinc-700 transition-colors"
+                            >
+                              Correct category →
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div>
