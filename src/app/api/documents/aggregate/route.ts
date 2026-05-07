@@ -209,7 +209,7 @@ export async function GET(req: NextRequest) {
   const categoryMap = new Map<string, { total: number; count: number; transactions: CategorySummary["transactions"] }>();
   for (const tx of allTransactions) {
     if (tx.type !== "debit") continue;
-    const coreKey = tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ");
+    const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
     const subcategory = vendor?.subcategory ?? tx.subcategory ?? "one-off";
     if (!categoryMap.has(subcategory)) {
