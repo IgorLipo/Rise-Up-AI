@@ -226,3 +226,13 @@ export interface ParseResult {
   parser: "pdf" | "csv";
   fileName: string;
 }
+
+// ── Forecast Types ──
+
+export type ForecastStatus = "safe" | "watch" | "risk" | "critical";
+
+export type Subcategory =
+  | "salary" | "subscriptions" | "software" | "car-expenses"
+  | "rent" | "taxes" | "loans" | "supplier-payments"
+  | "utilities" | "bank-fees" | "insurance" | "marketing"
+  | "travel" | "office-supplies" | "professional-services" | "one-off";
