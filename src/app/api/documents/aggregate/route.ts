@@ -209,10 +209,9 @@ export async function GET(req: NextRequest) {
   const categoryMap = new Map<string, { total: number; count: number; transactions: CategorySummary["transactions"] }>();
   for (const tx of allTransactions) {
     if (tx.type !== "debit") continue;
-    const core = learningReport.vendors.get(
-      tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ")
-    );
-    const subcategory = tx.subcategory ?? "one-off";
+    const coreKey = tx.description.toLowerCase().split(/[\s,]+/).slice(0, 2).join(" ");
+    const vendor = learningReport.vendors.get(coreKey);
+    const subcategory = vendor?.subcategory ?? tx.subcategory ?? "one-off";
     if (!categoryMap.has(subcategory)) {
       categoryMap.set(subcategory, { total: 0, count: 0, transactions: [] });
     }
