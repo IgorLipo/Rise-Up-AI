@@ -91,6 +91,7 @@ export async function GET(req: NextRequest) {
         ? `${stmt.accountInfo.statementPeriod.from} to ${stmt.accountInfo.statementPeriod.to}`
         : doc.filename;
       const month = stmt.accountInfo?.statementPeriod?.from?.slice(0, 7)
+        ?? stmt.transactions[0]?.date?.slice(0, 7)
         ?? doc.uploaded_at?.slice(0, 7)
         ?? "unknown";
       const income = stmt.transactions
@@ -239,18 +240,28 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.total - a.total);
 
   // ── Vendor Learning Summaries ──
-  const recurringVendors = learningReport.recurringCandidates.map((v) => ({
-    canonicalName: v.canonicalName,
-    subcategory: v.subcategory,
-    category: v.category,
-    typicalAmount: v.typicalAmount,
-    recurrencePattern: v.recurrencePattern,
-    appearanceCount: v.appearanceCount,
-    monthsSeen: v.months.length,
-    firstSeen: v.firstSeen,
-    lastSeen: v.lastSeen,
-    amountRange: v.amountRange,
-  }));
+  const recurringVendors = learningReport.recurringCandidates.map((v) => {
+    let confidence = 0.4;
+    if (v.appearanceCount >= 3) confidence += 0.2;
+    if (v.months.length >= 2) confidence += 0.1;
+    if (v.months.length >= 3) confidence += 0.1;
+    if (v.isRecurring) confidence += 0.1;
+    confidence = Math.min(1, confidence);
+
+    return {
+      canonicalName: v.canonicalName,
+      subcategory: v.subcategory,
+      category: v.category,
+      typicalAmount: v.typicalAmount,
+      recurrencePattern: v.recurrencePattern,
+      appearanceCount: v.appearanceCount,
+      monthsSeen: v.months.length,
+      confidence,
+      firstSeen: v.firstSeen,
+      lastSeen: v.lastSeen,
+      amountRange: v.amountRange,
+    };
+  });
 
   const suspiciousVendors = learningReport.suspiciousCandidates.map((v) => ({
     canonicalName: v.canonicalName,
