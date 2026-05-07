@@ -35,7 +35,37 @@ export async function saveDocument(
     company_id: companyId,
     uploaded_by: userId,
   });
-  return !error;
+
+  if (error) return false;
+
+  // Also record to statement_history for accumulated learning
+  const income = data.transactions
+    .filter((t) => t.type === "credit")
+    .reduce((s, t) => s + t.amount, 0);
+  const expenses = data.transactions
+    .filter((t) => t.type === "debit")
+    .reduce((s, t) => s + t.amount, 0);
+
+  const { error: historyError } = await supabase.from("statement_history").insert({
+    company_id: companyId,
+    document_id: id,
+    filename,
+    statement_period_start: data.accountInfo?.statementPeriod?.from ?? null,
+    statement_period_end: data.accountInfo?.statementPeriod?.to ?? null,
+    opening_balance: data.accountInfo?.openingBalance ?? 0,
+    closing_balance: data.accountInfo?.closingBalance ?? 0,
+    total_income: income,
+    total_expenses: expenses,
+    transaction_count: data.transactions.length,
+    net_flow: income - expenses,
+    parse_status: "ok",
+  });
+
+  if (historyError) {
+    console.error("Failed to record statement history:", historyError);
+  }
+
+  return true;
 }
 
 export async function getDocument(id: string, companyId: string): Promise<DocumentRecord | null> {

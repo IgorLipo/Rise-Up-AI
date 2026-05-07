@@ -20,6 +20,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 { href: "/dashboard", label: "Dashboard" },
                 { href: "/forecast", label: "Forecast" },
                 { href: "/transactions", label: "Transactions" },
+                { href: "/history", label: "History" },
                 { href: "/upload", label: "Upload" },
               ].map((l) => (
                 <Link

@@ -235,4 +235,6 @@ export type Subcategory =
   | "salary" | "subscriptions" | "software" | "car-expenses"
   | "rent" | "taxes" | "loans" | "supplier-payments"
   | "utilities" | "bank-fees" | "insurance" | "marketing"
-  | "travel" | "office-supplies" | "professional-services" | "one-off";
+  | "travel" | "office-supplies" | "professional-services"
+  | "supplies" | "director-loans" | "property-management"
+  | "one-off";

@@ -1,103 +1,215 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useActiveCompany } from "@/lib/auth/client";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { getDocumentHistory, type DocumentHistoryEntry } from "@/lib/history";
-import { DocumentHistoryCard } from "@/components/history/document-history-card";
+import { formatCurrency } from "@/lib/utils";
+
+interface StatementDoc {
+  period: string;
+  month: string;
+  closingBalance: number;
+  transactionCount: number;
+  totalIncome: number;
+  totalExpenses: number;
+  netFlow: number;
+}
+
+interface MonthlyGroup {
+  month: string;
+  label: string;
+  statements: StatementDoc[];
+  totalIncome: number;
+  totalExpenses: number;
+  netFlow: number;
+  transactionCount: number;
+}
+
+function Skeleton() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-3 animate-pulse">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="bg-white border border-zinc-200 rounded-xl p-5">
+          <div className="h-4 bg-zinc-100 rounded w-32 mb-3" />
+          <div className="h-3 bg-zinc-100 rounded w-full mb-2" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function HistoryPage() {
- const router = useRouter();
- const [entries, setEntries] = useState<DocumentHistoryEntry[]>([]);
- const [loaded, setLoaded] = useState(false);
- const [loadingId, setLoadingId] = useState<string | null>(null);
+  const { companyId } = useActiveCompany();
+  const router = useRouter();
+  const [monthly, setMonthly] = useState<MonthlyGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
- useEffect(() => {
- // TODO: replace with real companyId from auth once middleware is in place
- fetch("/api/documents")
- .then((r) => r.json())
- .then((json) => {
- if (json.success && json.documents.length > 0) {
- setEntries(json.documents);
- } else {
- setEntries(getDocumentHistory());
- }
- })
- .catch(() => setEntries(getDocumentHistory()))
- .finally(() => setLoaded(true));
- }, []);
+  useEffect(() => {
+    if (!companyId) return;
 
- const handleEntryClick = useCallback(async (entry: DocumentHistoryEntry) => {
- setLoadingId(entry.id);
- try {
- // TODO: replace with real companyId from auth once middleware is in place
- const res = await fetch(`/api/documents/${entry.id}`);
- const json = await res.json();
- if (json.success && json.document) {
- const doc = json.document;
- sessionStorage.setItem("statementData", JSON.stringify(doc.statement_data));
- if (doc.insights) {
- sessionStorage.setItem("statementInsights", JSON.stringify(doc.insights));
- }
- sessionStorage.setItem("analysisMode", doc.mode);
- toast.success(`Loaded ${doc.filename}`);
- router.push("/dashboard");
- } else {
- toast.error("Document not found in database");
- }
- } catch {
- toast.error("Failed to load document");
- } finally {
- setLoadingId(null);
- }
- }, [router]);
+    fetch("/api/documents/aggregate")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.documents && json.documents.length > 0) {
+          const byMonth = new Map<string, StatementDoc[]>();
+          for (const doc of json.documents as StatementDoc[]) {
+            const month = doc.month || "unknown";
+            if (!byMonth.has(month)) byMonth.set(month, []);
+            byMonth.get(month)!.push(doc);
+          }
 
- if (!loaded) return null;
+          const groups: MonthlyGroup[] = [];
+          for (const [month, statements] of byMonth) {
+            const label = new Date(month + "-01").toLocaleDateString("en-GB", {
+              year: "numeric",
+              month: "long",
+            });
+            groups.push({
+              month,
+              label,
+              statements,
+              totalIncome: statements.reduce((s, e) => s + e.totalIncome, 0),
+              totalExpenses: statements.reduce((s, e) => s + e.totalExpenses, 0),
+              netFlow: statements.reduce((s, e) => s + e.netFlow, 0),
+              transactionCount: statements.reduce((s, e) => s + e.transactionCount, 0),
+            });
+          }
+          groups.sort((a, b) => b.month.localeCompare(a.month));
+          setMonthly(groups);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [companyId]);
 
- return (
- <div className="max-w-4xl mx-auto px-6 py-10 pb-24 space-y-8">
- <div>
- <h1 className="font-display text-3xl font-bold text-zinc-900">
- Document history
- </h1>
- <p className="mt-1 text-zinc-500">
- Previously uploaded statements and their full reports — click any to restore.
- </p>
- </div>
+  if (loading) return <Skeleton />;
 
- {entries.length === 0 ? (
- <div className="bg-white border border-zinc-200 rounded-3xl p-16 text-center">
- <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-100/50 bg-zinc-50">
- <svg className="w-7 h-7 text-zinc-300 text-zinc-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
- <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
- </svg>
- </div>
- <h2 className="font-display text-xl font-semibold text-zinc-900 mb-2">
- No document history
- </h2>
- <p className="text-sm text-zinc-500 mb-6">
- Upload a bank statement to see it here.
- </p>
- <Link
- href="/upload"
- className="inline-flex px-6 py-2.5 rounded-full bg-zinc-900 text-white font-medium hover:bg-zinc-800 transition-colors"
- >
- Upload a statement
- </Link>
- </div>
- ) : (
- <div className="space-y-3">
- {entries.map((entry) => (
- <DocumentHistoryCard
- key={entry.id}
- entry={entry}
- isLoading={loadingId === entry.id}
- onClick={() => handleEntryClick(entry)}
- />
- ))}
- </div>
- )}
- </div>
- );
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-900">Statement history</h1>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            {monthly.length} months · {monthly.reduce((s, m) => s + m.transactionCount, 0)} transactions total
+          </p>
+        </div>
+        <button
+          onClick={() => router.push("/upload")}
+          className="px-4 py-2 rounded-lg bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors"
+        >
+          Upload more
+        </button>
+      </div>
+
+      {monthly.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-sm text-zinc-500 mb-4">No statements uploaded yet.</p>
+          <button
+            onClick={() => router.push("/upload")}
+            className="px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-medium hover:bg-zinc-800 transition-colors"
+          >
+            Upload your first statement
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {monthly.map((m) => {
+            const isExpanded = expandedMonth === m.month;
+            return (
+              <div key={m.month} className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setExpandedMonth(isExpanded ? null : m.month)}
+                  className="w-full p-4 text-left hover:bg-zinc-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-zinc-900">{m.label}</div>
+                      <div className="text-xs text-zinc-400 mt-0.5">
+                        {m.statements.length} statement{m.statements.length > 1 ? "s" : ""} · {m.transactionCount} transactions
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className={`text-sm font-mono font-medium ${
+                          m.netFlow >= 0 ? "text-emerald-600" : "text-red-500"
+                        }`}>
+                          {m.netFlow >= 0 ? "+" : ""}{formatCurrency(m.netFlow)}
+                        </div>
+                        <div className="text-xs text-zinc-400">
+                          in {formatCurrency(m.totalIncome)} / out {formatCurrency(m.totalExpenses)}
+                        </div>
+                      </div>
+                      <svg
+                        className={`w-4 h-4 text-zinc-300 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-zinc-100 px-4 pb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 mb-3">
+                      <div className="bg-zinc-50 rounded-lg p-2.5">
+                        <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Income</div>
+                        <div className="text-sm font-mono font-medium text-emerald-600 mt-0.5">
+                          {formatCurrency(m.totalIncome)}
+                        </div>
+                      </div>
+                      <div className="bg-zinc-50 rounded-lg p-2.5">
+                        <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Expenses</div>
+                        <div className="text-sm font-mono font-medium text-red-500 mt-0.5">
+                          {formatCurrency(m.totalExpenses)}
+                        </div>
+                      </div>
+                      <div className="bg-zinc-50 rounded-lg p-2.5">
+                        <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Net flow</div>
+                        <div className={`text-sm font-mono font-medium mt-0.5 ${
+                          m.netFlow >= 0 ? "text-emerald-600" : "text-red-500"
+                        }`}>
+                          {m.netFlow >= 0 ? "+" : ""}{formatCurrency(m.netFlow)}
+                        </div>
+                      </div>
+                      <div className="bg-zinc-50 rounded-lg p-2.5">
+                        <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Statements</div>
+                        <div className="text-sm font-mono font-medium text-zinc-900 mt-0.5">
+                          {m.statements.length}
+                        </div>
+                      </div>
+                    </div>
+
+                    {m.statements.map((stmt, i) => (
+                      <div key={i} className="border border-zinc-100 rounded-lg p-3 mb-2 last:mb-0">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xs font-medium text-zinc-700">{stmt.period}</div>
+                            <div className="text-xs text-zinc-400 mt-0.5">
+                              {stmt.transactionCount} transactions
+                              {stmt.closingBalance > 0 ? ` · closing ${formatCurrency(stmt.closingBalance)}` : ""}
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/transactions?month=${m.month}`);
+                            }}
+                            className="px-3 py-1 rounded text-[10px] font-medium border border-zinc-200 text-zinc-500 hover:bg-zinc-50 transition-colors"
+                          >
+                            View transactions
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
