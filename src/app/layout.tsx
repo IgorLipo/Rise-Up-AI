@@ -30,7 +30,7 @@ export default function RootLayout({
       className={`${playfair.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
-        <Toaster position="top-center" />
+        <Toaster position="top-center" richColors />
         {children}
       </body>
     </html>

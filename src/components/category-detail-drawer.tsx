@@ -13,7 +13,6 @@ interface CategoryDetail {
   averageAmount: number;
   largestTransaction: Transaction | null;
   topMerchants: { name: string; total: number; count: number }[];
-  // insights
   summary: string;
   patterns: string[];
   recommendations: string[];
@@ -82,48 +81,45 @@ export function CategoryDetailDrawer({
     };
   }, [category, transactions, totalSpend]);
 
-  // Lock body scroll
-  if (category && detail) {
-    if (typeof document !== "undefined") {
-      document.body.style.overflow = "hidden";
-    }
-  } else {
-    if (typeof document !== "undefined") {
-      document.body.style.overflow = "";
-    }
+  if (!category || !detail) {
     return null;
   }
 
   const handleClose = () => {
-    document.body.style.overflow = "";
+    if (typeof document !== "undefined") {
+      document.body.style.overflow = "";
+    }
     onClose();
   };
 
+  // Lock body scroll when open
+  if (typeof document !== "undefined") {
+    document.body.style.overflow = "hidden";
+  }
+
   return (
     <>
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-warm-black/30 backdrop-blur-sm z-40 backdrop-fade-in"
+        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 backdrop-fade-in"
         onClick={handleClose}
       />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[520px] z-50 animate-drawer-slide-in flex flex-col bg-warm-black border-l border-white/[0.06] shadow-2xl">
+      <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[520px] z-50 animate-drawer-slide-in flex flex-col bg-white border-l border-zinc-200 shadow-2xl">
         {/* Header */}
-        <div className="p-5 border-b border-white/[0.06] shrink-0">
+        <div className="p-5 border-b border-zinc-100 shrink-0">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+              <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
                 Category breakdown
               </span>
-              <h2 className="mt-1 font-display text-xl font-bold text-warm-white">
+              <h2 className="mt-1 font-display text-xl font-bold text-zinc-900">
                 {detail.category}
               </h2>
-              <p className="mt-1 text-sm text-zinc-300">{detail.summary}</p>
+              <p className="mt-1 text-sm text-zinc-500">{detail.summary}</p>
             </div>
             <button
               onClick={handleClose}
-              className="shrink-0 ml-4 w-8 h-8 rounded-full hover:bg-white/[0.06] flex items-center justify-center transition-colors"
+              className="shrink-0 ml-4 w-8 h-8 rounded-full hover:bg-zinc-100 flex items-center justify-center transition-colors"
             >
               <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -133,46 +129,46 @@ export function CategoryDetailDrawer({
 
           {/* Key stats */}
           <div className="grid grid-cols-3 gap-3 mt-4">
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+            <div className="rounded-xl bg-zinc-50 p-3">
+              <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
                 Total spent
               </span>
-              <p className="mt-0.5 font-mono text-base font-semibold text-warm-white">
+              <p className="mt-0.5 font-mono text-base font-semibold text-zinc-900">
                 {formatCurrency(detail.total)}
               </p>
             </div>
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+            <div className="rounded-xl bg-zinc-50 p-3">
+              <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
                 % of spend
               </span>
-              <p className="mt-0.5 font-mono text-base font-semibold text-warm-white">
+              <p className="mt-0.5 font-mono text-base font-semibold text-zinc-900">
                 {detail.percentage.toFixed(1)}%
               </p>
             </div>
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+            <div className="rounded-xl bg-zinc-50 p-3">
+              <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
                 Transactions
               </span>
-              <p className="mt-0.5 font-mono text-base font-semibold text-warm-white">
+              <p className="mt-0.5 font-mono text-base font-semibold text-zinc-900">
                 {detail.count}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+            <div className="rounded-xl bg-zinc-50 p-3">
+              <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
                 Average
               </span>
-              <p className="mt-0.5 font-mono text-sm font-semibold text-warm-white">
+              <p className="mt-0.5 font-mono text-sm font-semibold text-zinc-900">
                 {formatCurrency(detail.averageAmount)}
               </p>
             </div>
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
+            <div className="rounded-xl bg-zinc-50 p-3">
+              <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider">
                 Largest
               </span>
-              <p className="mt-0.5 font-mono text-sm font-semibold text-warm-white truncate">
+              <p className="mt-0.5 font-mono text-sm font-semibold text-zinc-900 truncate">
                 {detail.largestTransaction
                   ? formatCurrency(detail.largestTransaction.amount)
                   : "—"}
@@ -186,22 +182,22 @@ export function CategoryDetailDrawer({
           {/* Top merchants */}
           {detail.topMerchants.length > 0 && (
             <section>
-              <h3 className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider mb-3">
+              <h3 className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider mb-3">
                 Top recipients
               </h3>
               <div className="space-y-1.5">
                 {detail.topMerchants.map((m) => (
                   <div
                     key={m.name}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.02]"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50"
                   >
                     <div className="flex-1 min-w-0 mr-3">
-                      <p className="text-sm text-zinc-200 truncate">{m.name}</p>
-                      <p className="text-[10px] text-zinc-500">
+                      <p className="text-sm text-zinc-700 truncate">{m.name}</p>
+                      <p className="text-[10px] text-zinc-400">
                         {m.count} transaction{m.count !== 1 ? "s" : ""}
                       </p>
                     </div>
-                    <span className="font-mono text-sm text-warm-white shrink-0">
+                    <span className="font-mono text-sm text-zinc-900 shrink-0">
                       {formatCurrency(m.total)}
                     </span>
                   </div>
@@ -213,12 +209,12 @@ export function CategoryDetailDrawer({
           {/* Patterns */}
           {detail.patterns.length > 0 && (
             <section>
-              <h3 className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider mb-3">
+              <h3 className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider mb-3">
                 Patterns
               </h3>
               <ul className="space-y-2">
                 {detail.patterns.map((p, i) => (
-                  <li key={i} className="text-sm text-zinc-200 flex gap-2">
+                  <li key={i} className="text-sm text-zinc-600 flex gap-2">
                     <span className="text-amber-500 shrink-0 mt-0.5">-</span>
                     {p}
                   </li>
@@ -230,13 +226,13 @@ export function CategoryDetailDrawer({
           {/* Recommendations */}
           {detail.recommendations.length > 0 && (
             <section>
-              <h3 className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider mb-3">
+              <h3 className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider mb-3">
                 Recommendations
               </h3>
               <ul className="space-y-2">
                 {detail.recommendations.map((r, i) => (
-                  <li key={i} className="text-sm text-zinc-200 flex gap-2">
-                    <span className="text-sage-400 shrink-0 mt-0.5">+</span>
+                  <li key={i} className="text-sm text-zinc-600 flex gap-2">
+                    <span className="text-emerald-500 shrink-0 mt-0.5">+</span>
                     {r}
                   </li>
                 ))}
@@ -246,7 +242,7 @@ export function CategoryDetailDrawer({
 
           {/* Transaction list */}
           <section>
-            <h3 className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider mb-3">
+            <h3 className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider mb-3">
               Transactions ({detail.count})
             </h3>
             <div className="space-y-1">
@@ -256,21 +252,21 @@ export function CategoryDetailDrawer({
                 .map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors"
                   >
                     <div className="flex-1 min-w-0 mr-3">
-                      <p className="text-xs text-zinc-200 truncate">
+                      <p className="text-xs text-zinc-700 truncate">
                         {tx.description}
                       </p>
-                      <p className="text-[10px] text-zinc-500">{tx.date}</p>
+                      <p className="text-[10px] text-zinc-400">{tx.date}</p>
                     </div>
-                    <span className="font-mono text-xs text-red-400 shrink-0">
+                    <span className="font-mono text-xs text-red-500 shrink-0">
                       -{formatCurrency(tx.amount)}
                     </span>
                   </div>
                 ))}
               {detail.count > 50 && (
-                <p className="text-xs text-zinc-500 text-center pt-2">
+                <p className="text-xs text-zinc-400 text-center pt-2">
                   + {detail.count - 50} more transactions
                 </p>
               )}
@@ -534,7 +530,6 @@ function generateInsights(
     }
   }
 
-  // Generic patterns that apply to any category
   if (txs.length === 0) {
     summary = "No transactions in this category.";
   }

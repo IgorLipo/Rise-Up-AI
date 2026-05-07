@@ -13,10 +13,10 @@ export function FloatingBack() {
       type="button"
       onClick={() => router.back()}
       aria-label="Go back"
-      className="fixed top-4 left-4 z-50 w-9 h-9 md:w-10 md:h-10 rounded-full glass flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200 group"
+      className="fixed top-4 left-4 z-50 w-9 h-9 md:w-10 md:h-10 rounded-full bg-white border border-zinc-200 shadow-md flex items-center justify-center hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-200"
     >
       <svg
-        className="w-4 h-4 text-warm-black/50 dark:text-zinc-200 group-hover:text-warm-black dark:group-hover:text-warm-white transition-colors"
+        className="w-4 h-4 text-zinc-500"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
