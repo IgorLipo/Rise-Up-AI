@@ -18,6 +18,82 @@ export interface MonthEndForecast {
   generatedAt: string;
 }
 
+function daysBetween(d1: string, d2: string): number {
+  return Math.round((new Date(d2).getTime() - new Date(d1).getTime()) / 86400000);
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+function computeAverageGap(occurrences: { date: string; amount: number }[]): number {
+  if (occurrences.length < 2) return 30;
+  const gaps = [];
+  for (let i = 1; i < occurrences.length; i++) {
+    gaps.push(daysBetween(occurrences[i - 1].date, occurrences[i].date));
+  }
+  return Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
+}
+
+export interface CatchUpResult {
+  estimatedBalance: number;
+  lastKnownBalance: number;
+  lastKnownDate: string;
+  daysProjected: number;
+  isEstimated: boolean;
+}
+
+export function catchUpBalance(
+  patterns: EnrichedDetectedPatterns,
+  lastKnownBalance: number,
+  lastKnownDate: string,
+  today?: string
+): CatchUpResult {
+  const todayStr = today ?? new Date().toISOString().split("T")[0];
+
+  if (lastKnownDate >= todayStr) {
+    return {
+      estimatedBalance: lastKnownBalance,
+      lastKnownBalance,
+      lastKnownDate,
+      daysProjected: 0,
+      isEstimated: false,
+    };
+  }
+
+  let balance = lastKnownBalance;
+
+  for (const payment of patterns.recurringExpenses) {
+    if (payment.occurrences.length < 2) continue;
+    const gap = computeAverageGap(payment.occurrences);
+    let nextDate = addDays(payment.lastOccurrence, gap);
+    while (nextDate <= todayStr) {
+      balance -= payment.typicalAmount;
+      nextDate = addDays(nextDate, gap);
+    }
+  }
+
+  for (const income of patterns.recurringIncome) {
+    if (income.occurrences.length < 2) continue;
+    const gap = computeAverageGap(income.occurrences);
+    let nextDate = addDays(income.lastOccurrence, gap);
+    while (nextDate <= todayStr) {
+      balance += income.typicalAmount;
+      nextDate = addDays(nextDate, gap);
+    }
+  }
+
+  return {
+    estimatedBalance: balance,
+    lastKnownBalance,
+    lastKnownDate,
+    daysProjected: daysBetween(lastKnownDate, todayStr),
+    isEstimated: true,
+  };
+}
+
 export function generateForecast(
   patterns: EnrichedDetectedPatterns,
   currentBalance: number,

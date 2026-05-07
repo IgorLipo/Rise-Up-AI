@@ -18,6 +18,10 @@ interface AggregateResponse {
   totalDocuments: number;
   totalTransactions: number;
   currentBalance: number;
+  statementClosingBalance?: number;
+  balanceIsEstimated?: boolean;
+  balanceCatchUpDays?: number;
+  lastStatementDate?: string;
   accumulated: {
     totalIncome: number;
     totalExpenses: number;
@@ -197,6 +201,9 @@ export default function DashboardPage() {
         netFlow={accumulated.netFlow}
         totalDocuments={data.totalDocuments}
         totalTransactions={data.totalTransactions}
+        balanceIsEstimated={data.balanceIsEstimated}
+        balanceCatchUpDays={data.balanceCatchUpDays}
+        statementClosingBalance={data.statementClosingBalance}
       />
 
       {/* Insight hero */}

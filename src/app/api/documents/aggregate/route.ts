@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { detectAllAsync } from "@/lib/detection";
-import { generateForecast } from "@/lib/forecast";
+import { generateForecast, catchUpBalance } from "@/lib/forecast";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { upsertVendorIntelBatch, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
@@ -176,7 +176,18 @@ export async function GET(req: NextRequest) {
   }
 
   const { patterns, newVendors } = await detectAllAsync(allTransactions, knownVendors);
-  const forecast = generateForecast(patterns, currentBalance);
+
+  // Estimate current balance by projecting patterns from last statement to today
+  const lastStatementDate = latestStmt?.accountInfo?.statementPeriod?.to
+    ?? latestStmt?.transactions?.[latestStmt.transactions.length - 1]?.date
+    ?? docs[docs.length - 1].uploaded_at?.slice(0, 10)
+    ?? new Date().toISOString().split("T")[0];
+  const statementClosingBalance = latestStmt?.accountInfo?.closingBalance
+    ?? allTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
+  const catchUp = catchUpBalance(patterns, statementClosingBalance, lastStatementDate);
+  const effectiveBalance = catchUp.isEstimated ? catchUp.estimatedBalance : statementClosingBalance;
+
+  const forecast = generateForecast(patterns, effectiveBalance);
 
   // ── Monthly grouping ──
   const byMonth = new Map<string, Transaction[]>();
@@ -301,7 +312,11 @@ export async function GET(req: NextRequest) {
     },
 
     // Current balance + forecast
-    currentBalance,
+    currentBalance: effectiveBalance,
+    statementClosingBalance,
+    balanceIsEstimated: catchUp.isEstimated,
+    balanceCatchUpDays: catchUp.daysProjected,
+    lastStatementDate,
     forecast: {
       currentBalance: forecast.currentBalance,
       predictedMonthEnd: forecast.predictedMonthEnd,
