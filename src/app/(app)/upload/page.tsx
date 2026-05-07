@@ -107,8 +107,7 @@ export default function UploadPage() {
             netFlow: json.data.summary.netFlow,
           });
 
-          // Persist to Supabase via API route
-          // TODO: replace with real companyId/userId from auth once middleware is in place
+          // Persist to Supabase via API route (auth handled server-side)
           fetch("/api/documents", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -195,7 +194,7 @@ export default function UploadPage() {
     <div className="max-w-4xl mx-auto px-6 py-12">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-2">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-warm-black dark:text-warm-white">
+          <h1 className="font-display text-3xl sm:text-4xl font-bold text-zinc-900 text-zinc-900">
             {parsing
               ? `Parsing ${currentFile || "statement"}...`
               : generatingInsights
@@ -206,7 +205,7 @@ export default function UploadPage() {
                     ? `${currentFile || "Statement"} — ${result.summary.transactionCount} transactions`
                     : "Upload a bank statement"}
           </h1>
-          <p className="mt-2 text-warm-black/50 dark:text-zinc-300">
+          <p className="mt-2 text-zinc-500 text-zinc-500">
             {parsing
               ? "Extracting transactions and categorising your data."
               : generatingInsights
@@ -220,15 +219,15 @@ export default function UploadPage() {
         </div>
 
         {!result && (
-          <div className="flex rounded-full bg-warm-gray/50 dark:bg-white/5 p-0.5">
+          <div className="flex rounded-full bg-zinc-100 bg-zinc-50 p-0.5">
             {(["personal", "business"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
                   mode === m
-                    ? "bg-white dark:bg-white/15 text-warm-black dark:text-warm-white shadow-sm"
-                    : "text-warm-black/40 dark:text-zinc-400 hover:text-warm-black/60 dark:hover:text-warm-white/50"
+                    ? "bg-white bg-zinc-50 text-zinc-900 text-zinc-900 shadow-sm"
+                    : "text-zinc-500 text-zinc-500 hover:text-zinc-600 hover:text-zinc-500"
                 }`}
               >
                 {m === "personal" ? "Personal" : "Business"}
@@ -243,8 +242,8 @@ export default function UploadPage() {
         <label
           className={`mt-10 border-2 border-dashed rounded-2xl p-16 text-center transition-all cursor-pointer block ${
             dragOver
-              ? "border-amber-500 bg-amber-50/50 dark:bg-amber-900/10"
-              : "border-warm-gray dark:border-warm-white/10 hover:border-amber-400 dark:hover:border-amber-600"
+              ? "border-zinc-900 bg-zinc-50 bg-zinc-50"
+              : "border-zinc-200 border-zinc-200 hover:border-zinc-300 hover:border-zinc-400"
           }`}
           onDragOver={(e) => {
             e.preventDefault();
@@ -255,23 +254,23 @@ export default function UploadPage() {
         >
           {parsing ? (
             <div className="flex flex-col items-center gap-3">
-              <svg className="w-10 h-10 text-amber-500 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg className="w-10 h-10 text-zinc-900 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              <span className="font-mono text-sm text-amber-600 dark:text-amber-500">Parsing your statement...</span>
+              <span className="font-mono text-sm text-zinc-700 text-zinc-700">Parsing your statement...</span>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 pointer-events-none">
-              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center">
-                <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-14 h-14 rounded-2xl bg-zinc-100 bg-zinc-50 flex items-center justify-center">
+                <svg className="w-7 h-7 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
               </div>
-              <span className="font-medium text-warm-black dark:text-warm-white">
+              <span className="font-medium text-zinc-900 text-zinc-900">
                 Drop your {isBusiness ? "business " : ""}bank statement here
               </span>
-              <span className="text-sm text-warm-black/35 dark:text-zinc-500">
+              <span className="text-sm text-zinc-400 text-zinc-500">
                 or click to browse — PDF, CSV
               </span>
             </div>
@@ -297,17 +296,17 @@ export default function UploadPage() {
               { label: isBusiness ? "Spend" : "Total Out", value: formatCurrency(result.summary.totalDebits), tone: "neutral" },
               { label: "Transactions", value: String(result.summary.transactionCount), tone: "neutral" },
             ].map((card) => (
-              <div key={card.label} className="glass rounded-xl p-4">
-                <span className="text-xs text-warm-black/40 dark:text-zinc-400 font-mono uppercase tracking-wider">
+              <div key={card.label} className="bg-white border border-zinc-200 rounded-xl p-4">
+                <span className="text-xs text-zinc-500 text-zinc-500 font-mono uppercase tracking-wider">
                   {card.label}
                 </span>
                 <p
                   className={`mt-1 font-mono text-xl font-medium ${
                     card.tone === "positive"
-                      ? "text-sage-600 dark:text-sage-400"
+                      ? "text-emerald-600 text-emerald-600"
                       : card.tone === "negative"
                         ? "text-red-500"
-                        : "text-warm-black dark:text-warm-white"
+                        : "text-zinc-900 text-zinc-900"
                   }`}
                 >
                   {card.value}
@@ -318,25 +317,25 @@ export default function UploadPage() {
 
           {/* Category breakdown */}
           <div>
-            <h2 className="font-display text-xl font-semibold text-warm-black dark:text-warm-white mb-4">
+            <h2 className="font-display text-xl font-semibold text-zinc-900 text-zinc-900 mb-4">
               Spending by category
             </h2>
             <div className="space-y-2">
               {result.categoryBreakdown.slice(0, 8).map((cat) => (
                 <div key={cat.category} className="flex items-center gap-3">
-                  <span className="w-28 text-sm text-warm-black/60 dark:text-zinc-300 truncate">
+                  <span className="w-28 text-sm text-zinc-600 text-zinc-500 truncate">
                     {cat.category}
                   </span>
-                  <div className="flex-1 h-2 bg-warm-gray dark:bg-warm-white/5 rounded-full overflow-hidden">
+                  <div className="flex-1 h-2 bg-zinc-100 bg-zinc-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-amber-500 rounded-full transition-all duration-700"
+                      className="h-full bg-zinc-900 rounded-full transition-all duration-700"
                       style={{ width: `${cat.percentage}%` }}
                     />
                   </div>
-                  <span className="font-mono text-xs text-warm-black/50 dark:text-zinc-400 w-16 text-right">
+                  <span className="font-mono text-xs text-zinc-500 text-zinc-500 w-16 text-right">
                     {formatCurrency(cat.total)}
                   </span>
-                  <span className="font-mono text-xs text-warm-black/30 dark:text-zinc-600 w-10 text-right">
+                  <span className="font-mono text-xs text-zinc-400 text-zinc-500 w-10 text-right">
                     {cat.percentage.toFixed(0)}%
                   </span>
                 </div>
@@ -348,19 +347,19 @@ export default function UploadPage() {
           {(insights || generatingInsights) && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-xl font-semibold text-warm-black dark:text-warm-white">
+                <h2 className="font-display text-xl font-semibold text-zinc-900 text-zinc-900">
                   {isBusiness ? "Business Spend Review" : "AI Insights"}
                 </h2>
                 {!generatingInsights && insights && (
-                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 bg-zinc-50 text-zinc-700">
                     {isBusiness ? "DeepSeek Analysis" : "AI-Powered"}
                   </span>
                 )}
               </div>
 
               {generatingInsights ? (
-                <div className="glass rounded-xl p-8 text-center">
-                  <span className="font-mono text-sm text-amber-600 dark:text-amber-500">
+                <div className="bg-white border border-zinc-200 rounded-xl p-8 text-center">
+                  <span className="font-mono text-sm text-zinc-700 text-zinc-700">
                     {isBusiness ? "Analysing business spend patterns..." : "Analysing your spending patterns..."}
                   </span>
                 </div>
@@ -379,7 +378,7 @@ export default function UploadPage() {
           {/* Owner Review Pack */}
           {isBusiness && businessInsights && businessInsights.owner_review_pack.length > 0 && (
             <div>
-              <h2 className="font-display text-xl font-semibold text-warm-black dark:text-warm-white mb-4">
+              <h2 className="font-display text-xl font-semibold text-zinc-900 text-zinc-900 mb-4">
                 Owner Review Pack
               </h2>
               <OwnerReviewPack
@@ -391,14 +390,14 @@ export default function UploadPage() {
 
           {/* Missing data */}
           {isBusiness && businessInsights && businessInsights.missing_data.length > 0 && (
-            <div className="glass rounded-xl p-6 border border-dashed border-warm-gray dark:border-warm-white/10">
-              <h3 className="font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider mb-3">
+            <div className="bg-white border border-zinc-200 rounded-xl p-6 border border-dashed border-zinc-200 border-zinc-200">
+              <h3 className="font-mono text-xs text-zinc-400 text-zinc-500 uppercase tracking-wider mb-3">
                 To Improve This Analysis
               </h3>
               <ul className="space-y-1.5">
                 {businessInsights.missing_data.map((d, i) => (
-                  <li key={i} className="text-xs text-warm-black/45 dark:text-zinc-400 flex gap-2">
-                    <span className="text-warm-black/20 dark:text-warm-white/15 shrink-0">-</span>
+                  <li key={i} className="text-xs text-zinc-500 text-zinc-500 flex gap-2">
+                    <span className="text-zinc-300 text-zinc-900 shrink-0">-</span>
                     <span className="font-medium">{d.field}:</span> {d.why_it_would_help}
                   </li>
                 ))}
@@ -408,34 +407,34 @@ export default function UploadPage() {
 
           {/* Recent transactions */}
           <div>
-            <h2 className="font-display text-xl font-semibold text-warm-black dark:text-warm-white mb-4">
+            <h2 className="font-display text-xl font-semibold text-zinc-900 text-zinc-900 mb-4">
               Recent transactions
             </h2>
-            <div className="glass rounded-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-warm-gray dark:border-warm-white/5">
-                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Date</th>
-                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Description</th>
-                      <th className="text-left py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Category</th>
-                      <th className="text-right py-3 px-4 font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider">Amount</th>
+                    <tr className="border-b border-zinc-200 border-zinc-100">
+                      <th className="text-left py-3 px-4 font-mono text-xs text-zinc-400 text-zinc-500 uppercase tracking-wider">Date</th>
+                      <th className="text-left py-3 px-4 font-mono text-xs text-zinc-400 text-zinc-500 uppercase tracking-wider">Description</th>
+                      <th className="text-left py-3 px-4 font-mono text-xs text-zinc-400 text-zinc-500 uppercase tracking-wider">Category</th>
+                      <th className="text-right py-3 px-4 font-mono text-xs text-zinc-400 text-zinc-500 uppercase tracking-wider">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.transactions.slice(-30).reverse().map((tx) => (
                       <tr
                         key={tx.id}
-                        className="border-b border-warm-gray/50 dark:border-warm-white/[0.03] hover:bg-warm-gray/30 dark:hover:bg-white/[0.02] transition-colors"
+                        className="border-b border-zinc-100 border-zinc-100 hover:bg-zinc-50 hover:bg-zinc-50 transition-colors"
                       >
-                        <td className="py-2.5 px-4 font-mono text-xs text-warm-black/45 dark:text-zinc-400">{tx.date}</td>
-                        <td className="py-2.5 px-4 text-warm-black/80 dark:text-zinc-100 max-w-xs truncate">{tx.description}</td>
+                        <td className="py-2.5 px-4 font-mono text-xs text-zinc-500 text-zinc-500">{tx.date}</td>
+                        <td className="py-2.5 px-4 text-zinc-800 text-zinc-500 max-w-xs truncate">{tx.description}</td>
                         <td className="py-2.5 px-4">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-warm-gray dark:bg-white/5 text-warm-black/45 dark:text-zinc-400">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 bg-zinc-50 text-zinc-500 text-zinc-500">
                             {tx.category || "Other"}
                           </span>
                         </td>
-                        <td className={`py-2.5 px-4 text-right font-mono text-sm ${tx.type === "credit" ? "text-sage-600 dark:text-sage-400" : "text-red-500"}`}>
+                        <td className={`py-2.5 px-4 text-right font-mono text-sm ${tx.type === "credit" ? "text-emerald-600 text-emerald-600" : "text-red-500"}`}>
                           {tx.type === "credit" ? "+" : "-"}{formatCurrency(tx.amount)}
                         </td>
                       </tr>
@@ -455,13 +454,13 @@ export default function UploadPage() {
                 setSelectedInsight(null);
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
-              className="px-6 py-2.5 rounded-full border border-warm-gray dark:border-warm-white/10 text-sm font-medium text-warm-black/60 dark:text-zinc-300 hover:bg-warm-gray/50 dark:hover:bg-white/5 transition-colors"
+              className="px-6 py-2.5 rounded-full border border-zinc-200 border-zinc-200 text-sm font-medium text-zinc-600 text-zinc-500 hover:bg-zinc-100 hover:bg-zinc-50 transition-colors"
             >
               Upload another statement
             </button>
             <button
               onClick={() => router.push("/dashboard")}
-              className="px-6 py-2.5 rounded-full bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+              className="px-6 py-2.5 rounded-full bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors"
             >
               View dashboard
             </button>
@@ -489,17 +488,17 @@ export default function UploadPage() {
 function PersonalInsightsView({ insights }: { insights: AIInsights }) {
   return (
     <div className="grid sm:grid-cols-2 gap-4">
-      <div className="glass rounded-xl p-6 sm:col-span-2">
+      <div className="bg-white border border-zinc-200 rounded-xl p-6 sm:col-span-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-warm-black/40 dark:text-zinc-400 font-mono uppercase tracking-wider">
+          <span className="text-sm text-zinc-500 text-zinc-500 font-mono uppercase tracking-wider">
             Cash Flow Health
           </span>
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium ${
               insights.cashFlowHealth === "excellent"
-                ? "bg-sage-400/20 text-sage-700 dark:text-sage-400"
+                ? "bg-emerald-100 text-emerald-700 text-emerald-600"
                 : insights.cashFlowHealth === "good"
-                  ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                  ? "bg-zinc-100 text-zinc-800 bg-zinc-50 text-zinc-700"
                   : insights.cashFlowHealth === "fair"
                     ? "bg-orange-100 text-orange-700"
                     : "bg-red-100 text-red-700"
@@ -508,33 +507,33 @@ function PersonalInsightsView({ insights }: { insights: AIInsights }) {
             {insights.cashFlowHealth}
           </span>
         </div>
-        <p className="mt-3 text-sm text-warm-black/60 dark:text-zinc-200 leading-relaxed">
+        <p className="mt-3 text-sm text-zinc-600 text-zinc-500 leading-relaxed">
           {insights.monthlyForecast.narrative}
         </p>
       </div>
 
-      <div className="glass rounded-xl p-6">
-        <h3 className="font-mono text-xs text-warm-black/40 dark:text-zinc-400 uppercase tracking-wider mb-3">
+      <div className="bg-white border border-zinc-200 rounded-xl p-6">
+        <h3 className="font-mono text-xs text-zinc-500 text-zinc-500 uppercase tracking-wider mb-3">
           Spending Patterns
         </h3>
         <ul className="space-y-2">
           {insights.spendingPatterns.map((p, i) => (
-            <li key={i} className="text-sm text-warm-black/70 dark:text-zinc-100 flex gap-2">
-              <span className="text-amber-500 mt-0.5 shrink-0">-</span>
+            <li key={i} className="text-sm text-zinc-700 text-zinc-500 flex gap-2">
+              <span className="text-zinc-900 mt-0.5 shrink-0">-</span>
               {p}
             </li>
           ))}
         </ul>
       </div>
 
-      <div className="glass rounded-xl p-6">
-        <h3 className="font-mono text-xs text-warm-black/40 dark:text-zinc-400 uppercase tracking-wider mb-3">
+      <div className="bg-white border border-zinc-200 rounded-xl p-6">
+        <h3 className="font-mono text-xs text-zinc-500 text-zinc-500 uppercase tracking-wider mb-3">
           Savings Opportunities
         </h3>
         <ul className="space-y-2">
           {insights.savingsOpportunities.map((s, i) => (
-            <li key={i} className="text-sm text-warm-black/70 dark:text-zinc-100 flex gap-2">
-              <span className="text-sage-600 dark:text-sage-400 mt-0.5 shrink-0">+</span>
+            <li key={i} className="text-sm text-zinc-700 text-zinc-500 flex gap-2">
+              <span className="text-emerald-600 text-emerald-600 mt-0.5 shrink-0">+</span>
               {s}
             </li>
           ))}
@@ -560,33 +559,33 @@ function BusinessSpendReviewView({
   return (
     <div className="space-y-6">
       {/* Executive Summary */}
-      <div className="glass rounded-xl p-6 border-l-4 border-amber-500">
+      <div className="bg-white border border-zinc-200 rounded-xl p-6 border-l-4 border-zinc-900">
         <div className="flex items-center gap-2 mb-3">
-          <span className="font-mono text-xs text-amber-600 dark:text-amber-500 uppercase tracking-wider">
+          <span className="font-mono text-xs text-zinc-700 text-zinc-700 uppercase tracking-wider">
             Executive Summary
           </span>
         </div>
-        <p className="text-sm text-warm-black/70 dark:text-zinc-100 leading-relaxed mb-4">
+        <p className="text-sm text-zinc-700 text-zinc-500 leading-relaxed mb-4">
           {executive_summary.plain_english_summary}
         </p>
         <div className="grid sm:grid-cols-3 gap-3">
-          <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3 text-center">
-            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Items to Review</p>
-            <p className="text-xl font-display font-bold text-warm-black dark:text-warm-white mt-1">{executive_summary.items_to_review}</p>
+          <div className="bg-zinc-50 bg-zinc-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-zinc-400 text-zinc-500 font-mono uppercase tracking-wider">Items to Review</p>
+            <p className="text-xl font-display font-bold text-zinc-900 text-zinc-900 mt-1">{executive_summary.items_to_review}</p>
           </div>
-          <div className="bg-warm-gray/30 dark:bg-white/[0.02] rounded-lg p-3 text-center">
-            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Insights Found</p>
-            <p className="text-xl font-display font-bold text-warm-black dark:text-warm-white mt-1">{items.length}</p>
+          <div className="bg-zinc-50 bg-zinc-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-zinc-400 text-zinc-500 font-mono uppercase tracking-wider">Insights Found</p>
+            <p className="text-xl font-display font-bold text-zinc-900 text-zinc-900 mt-1">{items.length}</p>
           </div>
-          <div className="bg-sage-100/50 dark:bg-sage-900/10 rounded-lg p-3 text-center">
-            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Est. Monthly Savings</p>
-            <p className="text-xl font-display font-bold text-sage-700 dark:text-sage-400 mt-1">{formatCurrency(executive_summary.estimated_monthly_savings.amount)}</p>
+          <div className="bg-emerald-50 bg-emerald-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-zinc-400 text-zinc-500 font-mono uppercase tracking-wider">Est. Monthly Savings</p>
+            <p className="text-xl font-display font-bold text-emerald-700 text-emerald-600 mt-1">{formatCurrency(executive_summary.estimated_monthly_savings.amount)}</p>
           </div>
         </div>
         {executive_summary.top_3_findings.length > 0 && (
           <div className="mt-4 space-y-1">
-            <p className="text-xs text-warm-black/35 dark:text-zinc-500 font-mono uppercase tracking-wider">Top Findings</p>
-            <ol className="list-decimal list-inside text-sm text-warm-black/60 dark:text-zinc-200 space-y-0.5">
+            <p className="text-xs text-zinc-400 text-zinc-500 font-mono uppercase tracking-wider">Top Findings</p>
+            <ol className="list-decimal list-inside text-sm text-zinc-600 text-zinc-500 space-y-0.5">
               {executive_summary.top_3_findings.map((f, i) => (
                 <li key={i}>{f.title}</li>
               ))}
@@ -601,7 +600,7 @@ function BusinessSpendReviewView({
           {insights.quick_actions.map((action, i) => (
             <span
               key={i}
-              className="px-3 py-1.5 rounded-full text-xs font-medium bg-warm-gray/50 dark:bg-white/5 text-warm-black/50 dark:text-zinc-300"
+              className="px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 bg-zinc-50 text-zinc-500 text-zinc-500"
             >
               {action.label}
             </span>
@@ -611,21 +610,21 @@ function BusinessSpendReviewView({
 
       {/* Insight cards */}
       {items.length === 0 ? (
-        <div className="glass rounded-xl p-8 text-center">
-          <p className="text-sm text-warm-black/40 dark:text-zinc-400">
+        <div className="bg-white border border-zinc-200 rounded-xl p-8 text-center">
+          <p className="text-sm text-zinc-500 text-zinc-500">
             No significant spending patterns detected. Your business finances appear well-controlled.
           </p>
         </div>
       ) : (
         <div>
-          <h3 className="font-mono text-xs text-warm-black/35 dark:text-zinc-500 uppercase tracking-wider mb-3">
+          <h3 className="font-mono text-xs text-zinc-400 text-zinc-500 uppercase tracking-wider mb-3">
             Detailed Findings ({items.length})
           </h3>
           <div className="space-y-3">
             {items.map((insight) => (
               <div key={insight.id} className="relative">
                 {reviewedIds.has(insight.id) && (
-                  <span className="absolute top-3 right-3 z-10 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sage-100 dark:bg-sage-900/30 text-sage-700 dark:text-sage-400">
+                  <span className="absolute top-3 right-3 z-10 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 bg-emerald-50 text-emerald-700 text-emerald-600">
                     Reviewed
                   </span>
                 )}

@@ -1,18 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabase } from "@/lib/supabase/server";
 import { listDocuments, saveDocument } from "@/lib/db";
 import type { StatementData, AIInsights, SpendReviewResult, AnalysisMode } from "@/types";
 
-// TODO: replace with real companyId/userId from auth once middleware is in place
-const PLACEHOLDER_COMPANY_ID = "00000000-0000-0000-0000-000000000000";
-const PLACEHOLDER_USER_ID = "00000000-0000-0000-0000-000000000000";
+async function getAuthContext() {
+  const supabase = await createServerSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: member } = await supabase
+    .from("company_members")
+    .select("company_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .single();
+
+  return { userId: user.id, companyId: member?.company_id ?? null };
+}
 
 export async function GET() {
-  const docs = await listDocuments(PLACEHOLDER_COMPANY_ID);
+  const ctx = await getAuthContext();
+  if (!ctx?.companyId) {
+    return NextResponse.json({ success: true, documents: [] });
+  }
+  const docs = await listDocuments(ctx.companyId);
   return NextResponse.json({ success: true, documents: docs });
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await getAuthContext();
+    if (!ctx?.companyId) {
+      return NextResponse.json({ success: false, error: "No company found" }, { status: 403 });
+    }
+
     const body = await req.json();
     const { id, filename, mode, data, insights } = body as {
       id: string;
@@ -28,8 +49,8 @@ export async function POST(req: NextRequest) {
       mode,
       data,
       insights,
-      PLACEHOLDER_COMPANY_ID,
-      PLACEHOLDER_USER_ID,
+      ctx.companyId,
+      ctx.userId,
     );
 
     if (!ok) {
