@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useActiveCompany } from "@/lib/auth/client";
 import type { StatementData } from "@/types";
-import { detectAll } from "@/lib/detection";
-import { generateForecast } from "@/lib/forecast";
 import type { MonthEndForecast } from "@/lib/forecast";
 import { EmptyDashboard } from "@/components/dashboard/empty-dashboard";
 import { CashPositionRow } from "@/components/dashboard/cash-position-row";
@@ -34,57 +32,26 @@ function DashboardSkeleton() {
   );
 }
 
-interface AIInsight {
-  headline: string;
-  summary: string;
-  severity: "info" | "warning" | "critical";
-}
-
 export default function DashboardPage() {
   const { companyId } = useActiveCompany();
   const [data, setData] = useState<StatementData | null>(null);
   const [forecast, setForecast] = useState<MonthEndForecast | null>(null);
-  const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [loading, setLoading] = useState(true);
-  const [docId, setDocId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
 
-    fetch("/api/documents")
+    fetch("/api/documents/aggregate")
       .then((r) => r.json())
       .then((json) => {
-        const docs = json.documents ?? [];
-        if (docs.length > 0) {
-          const id = docs[0].id;
-          setDocId(id);
-          fetch(`/api/documents/${id}`)
-            .then((r) => r.json())
-            .then((res) => {
-              const stmtData = res.document?.statement_data as StatementData;
-              if (stmtData?.transactions) {
-                setData(stmtData);
-                const patterns = detectAll(stmtData.transactions);
-                const fc = generateForecast(patterns, stmtData.summary.netFlow);
-                setForecast(fc);
-              }
-            });
+        if (json.totalTransactions > 0) {
+          setData({ transactions: [], accountInfo: {}, summary: { transactionCount: json.totalTransactions } } as unknown as StatementData);
+          setForecast(json.forecast);
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [companyId]);
-
-  // Fetch AI insight after forecast is ready
-  useEffect(() => {
-    if (!docId || !forecast) return;
-    fetch(`/api/insights/forecast?docId=${docId}`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.insight) setAiInsight(json.insight);
-      })
-      .catch(() => {}); // AI insight is non-critical — silent fallback
-  }, [docId, forecast]);
 
   if (loading) return <DashboardSkeleton />;
   if (!data || !forecast) return <EmptyDashboard />;

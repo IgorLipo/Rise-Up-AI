@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { generateInsightCard } from "@/lib/ai/forecast-insights";
-import { detectAll } from "@/lib/detection";
+import { detectAllAsync } from "@/lib/detection";
 import { generateForecast } from "@/lib/forecast";
+import { listVendors, saveVendors } from "@/lib/vendor-db";
+import type { AIClassification } from "@/lib/detection/ai-classifier";
 import { getDocument } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
@@ -39,9 +41,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: "No transactions" }, { status: 400 });
   }
 
-  const patterns = detectAll(data.transactions);
+  // Load known vendor classifications from DB
+  const vendors = await listVendors(member.company_id);
+  const knownVendors = new Map<string, AIClassification>();
+  for (const v of vendors) {
+    knownVendors.set(v.merchantNormalized, {
+      subcategory: v.subcategory,
+      confidence: v.confidence,
+      reasoning: `From ${v.source}`,
+    });
+  }
+
+  const { patterns, newVendors } = await detectAllAsync(data.transactions, knownVendors);
   const forecast = generateForecast(patterns, data.summary.netFlow);
   const insight = await generateInsightCard(forecast, patterns);
+
+  // Persist newly learned vendors
+  if (newVendors.length > 0) {
+    saveVendors(newVendors.map((v) => ({
+      companyId: member.company_id,
+      merchantRaw: v.merchantRaw,
+      merchantNormalized: v.merchantNormalized,
+      subcategory: v.subcategory,
+      category: v.subcategory,
+      confidence: v.confidence,
+      source: "ai" as const,
+      metadata: { reasoning: v.reasoning },
+    }))).catch(() => {});
+  }
 
   return NextResponse.json({
     success: true,

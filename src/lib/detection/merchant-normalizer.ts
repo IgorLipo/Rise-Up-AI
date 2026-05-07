@@ -4,14 +4,17 @@
 const NOISE_PATTERNS = [
   /\bREF:?\s*\S+/gi,
   /\bFP\s+\d{2}\/\d{2}\/\d{2}\s+\d+\s*\w*\b/gi,
-  /\b\d{10,}\b/g,
-  /\b[A-Z0-9]{6,}\b/g,
+  /\b\d{6,}\b/g,                        // Pure digit sequences (reference numbers)
+  /\b(?:[A-Z]{2,}[0-9][A-Z0-9]*|[0-9]+[A-Z]{2,}[A-Z0-9]*)\b/g,  // Mixed alphanumeric codes (not merchant names)
   /\bVIA\s+MOBILE\s*-\s*PYMT\b/gi,
   /\bPAYMENT TO\b/gi,
   /\bDIRECT DEBIT\b/gi,
   /\bSTANDING ORDER\b/gi,
   /\bBILL PAYMENT\b/gi,
   /\bCARD PAYMENT TO\b/gi,
+  /\bOnline Transaction\b/gi,
+  /\bAutomated Credit\b/gi,
+  /\bOnLine Transaction\b/gi,
 ];
 
 export function normalizeMerchant(description: string): string {

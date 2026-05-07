@@ -108,6 +108,13 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
     const last = sorted[sorted.length - 1];
     const gap = Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
 
+    // Project nextExpected forward to be at or after today
+    const today = new Date().toISOString().split("T")[0];
+    let nextExpected = addDays(last.date, gap);
+    while (nextExpected < today) {
+      nextExpected = addDays(nextExpected, gap);
+    }
+
     const payment: RecurringPayment = {
       id: crypto.randomUUID(),
       merchant: coreMerchant(sorted[0].description),
@@ -116,7 +123,7 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
       typicalAmount: mean,
       amountVariance: cv,
       lastOccurrence: last.date,
-      nextExpected: addDays(last.date, gap),
+      nextExpected,
       confidence,
       occurrences: sorted.map((t) => ({ date: t.date, amount: t.amount })),
     };
