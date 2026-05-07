@@ -34,11 +34,19 @@ function DashboardSkeleton() {
   );
 }
 
+interface AIInsight {
+  headline: string;
+  summary: string;
+  severity: "info" | "warning" | "critical";
+}
+
 export default function DashboardPage() {
   const { companyId } = useActiveCompany();
   const [data, setData] = useState<StatementData | null>(null);
   const [forecast, setForecast] = useState<MonthEndForecast | null>(null);
+  const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [loading, setLoading] = useState(true);
+  const [docId, setDocId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
@@ -48,7 +56,9 @@ export default function DashboardPage() {
       .then((json) => {
         const docs = json.documents ?? [];
         if (docs.length > 0) {
-          fetch(`/api/documents/${docs[0].id}`)
+          const id = docs[0].id;
+          setDocId(id);
+          fetch(`/api/documents/${id}`)
             .then((r) => r.json())
             .then((res) => {
               const stmtData = res.document?.statement_data as StatementData;
@@ -64,6 +74,17 @@ export default function DashboardPage() {
       })
       .catch(() => setLoading(false));
   }, [companyId]);
+
+  // Fetch AI insight after forecast is ready
+  useEffect(() => {
+    if (!docId || !forecast) return;
+    fetch(`/api/insights/forecast?docId=${docId}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.insight) setAiInsight(json.insight);
+      })
+      .catch(() => {}); // AI insight is non-critical — silent fallback
+  }, [docId, forecast]);
 
   if (loading) return <DashboardSkeleton />;
   if (!data || !forecast) return <EmptyDashboard />;
