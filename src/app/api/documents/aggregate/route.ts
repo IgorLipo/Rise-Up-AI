@@ -303,10 +303,10 @@ export async function GET(req: NextRequest) {
       netFlow: totalIncome - totalExpenses,
       statementCount: docs.length,
       totalTransactions: allTransactions.length,
-      dateRange: docs.length > 0
+      dateRange: allTransactions.length > 0
         ? {
-            from: docs[0].uploaded_at,
-            to: docs[docs.length - 1].uploaded_at,
+            from: allTransactions.reduce((earliest, tx) => tx.date < earliest ? tx.date : earliest, allTransactions[0].date),
+            to: allTransactions.reduce((latest, tx) => tx.date > latest ? tx.date : latest, allTransactions[0].date),
           }
         : null,
     },
