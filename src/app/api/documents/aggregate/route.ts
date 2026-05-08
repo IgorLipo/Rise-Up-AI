@@ -6,6 +6,7 @@ import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { upsertVendorIntelBatch, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
+import { extractEntities, entityAttributesForVendor } from "@/lib/detection/entity-extractor";
 import type { AIClassification } from "@/lib/detection/ai-classifier";
 import type { Transaction, StatementData } from "@/types";
 
@@ -123,6 +124,15 @@ export async function GET(req: NextRequest) {
 
   // Build vendor intel entries from learning
   const vendorIntelEntries = buildVendorIntelEntries(learningReport, companyId);
+
+  // Enrich vendor intel with entity attributes
+  for (const entry of vendorIntelEntries) {
+    const attrs = vendorEntityAttrs.get(entry.canonicalName);
+    if (attrs) {
+      entry.linkedProperty = entry.linkedProperty ?? attrs.linkedProperty;
+      entry.linkedPerson = entry.linkedPerson ?? attrs.linkedPerson;
+    }
+  }
 
   // Persist vendor intel to Supabase (fire-and-forget)
   if (vendorIntelEntries.length > 0) {
@@ -282,6 +292,19 @@ export async function GET(req: NextRequest) {
     reason: v.isRecurring ? "Recurring personal-like expense" : "One-off personal-like expense",
   }));
 
+  // ── Entity Extraction (properties + people) ──
+  const txDescriptors = allTransactions.map((tx) => ({ id: tx.id, description: tx.description }));
+  const entities = extractEntities(txDescriptors);
+
+  // Enrich vendor intel with entity attributes
+  const vendorEntityAttrs = new Map<string, { linkedProperty: string | null; linkedPerson: string | null; personRole: string | null }>();
+  for (const vendor of learningReport.vendors.values()) {
+    vendorEntityAttrs.set(
+      vendor.canonicalName,
+      entityAttributesForVendor(vendor.canonicalName, vendor.allDescriptions)
+    );
+  }
+
   // ── Accumulated Stats ──
   const totalIncome = allTransactions
     .filter((t) => t.type === "credit")
@@ -372,6 +395,25 @@ export async function GET(req: NextRequest) {
 
     // Cross-month insights
     crossMonthInsights: learningReport.crossMonthInsights,
+
+    // Entity extraction (properties + people)
+    entities: {
+      properties: [...entities.properties.entries()].map(([key, match]) => ({
+        key,
+        displayName: match.displayName,
+        confidence: match.confidence,
+        matchType: match.matchType,
+        transactionCount: entities.propertyTransactions.get(key)?.length ?? 0,
+      })),
+      people: [...entities.people.entries()].map(([key, match]) => ({
+        key,
+        personName: match.personName,
+        role: match.role,
+        confidence: match.confidence,
+        indicators: match.indicators,
+        transactionCount: entities.personTransactions.get(key)?.length ?? 0,
+      })),
+    },
 
     // Suspicious transactions
     suspicious: suspicious.map((s) => ({
