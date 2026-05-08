@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react"; // useEffect already present
 import { useActiveCompany } from "@/lib/auth/client";
 import { useSearchParams } from "next/navigation";
 import type { Transaction, Subcategory } from "@/types";
@@ -46,6 +46,8 @@ interface SuspiciousInfo {
   riskLevel: string;
 }
 
+const PAGE_SIZES = [25, 50, 100];
+
 function TransactionsPageInner() {
   const { companyId } = useActiveCompany();
   const searchParams = useSearchParams();
@@ -55,6 +57,9 @@ function TransactionsPageInner() {
   const [filter, setFilter] = useState<Subcategory | "all" | "suspicious">(
     (searchParams.get("filter") as Subcategory | "suspicious") || "all"
   );
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [loading, setLoading] = useState(true);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [correctingTx, setCorrectingTx] = useState<string | null>(null);
@@ -115,21 +120,51 @@ function TransactionsPageInner() {
   }, [companyId]);
 
   const filtered = useMemo(() => {
+    let result = transactions;
+
+    // Apply category filter
     if (filter === "suspicious") {
-      return transactions.filter((tx) => {
+      result = result.filter((tx) => {
         const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
         return suspiciousMap.has(key);
       });
+    } else if (filter !== "all") {
+      result = result.filter((tx) => {
+        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+        const vendor = vendorMap.get(key);
+        if (vendor) return vendor.subcategory === filter;
+        const { subcategory } = classifySubcategory(tx.description);
+        return subcategory === filter;
+      });
     }
-    if (filter === "all") return transactions;
-    return transactions.filter((tx) => {
-      const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
-      const vendor = vendorMap.get(key);
-      if (vendor) return vendor.subcategory === filter;
-      const { subcategory } = classifySubcategory(tx.description);
-      return subcategory === filter;
-    });
-  }, [transactions, filter, vendorMap, suspiciousMap]);
+
+    // Apply text search
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter((tx) => {
+        const desc = tx.description.toLowerCase();
+        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+        const vendor = vendorMap.get(key);
+        const subcat = vendor?.subcategory ?? classifySubcategory(tx.description).subcategory;
+        const catLabel = subcat.replace(/-/g, " ");
+        return desc.includes(q) || catLabel.includes(q) || (vendor?.canonicalName?.toLowerCase().includes(q));
+      });
+    }
+
+    return result;
+  }, [transactions, filter, vendorMap, suspiciousMap, search]);
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search]);
 
   const matchedVendor = (tx: Transaction): VendorInfo | null => {
     const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
@@ -191,8 +226,44 @@ function TransactionsPageInner() {
           <p className="text-xs text-zinc-400 mt-0.5">
             {filtered.length} of {transactions.length} transactions
             {vendorMap.size > 0 ? ` · ${vendorMap.size} vendors known` : ""}
+            {search ? ` · matching "${search}"` : ""}
           </p>
         </div>
+      </div>
+
+      {/* Search + page size */}
+      <div className="flex gap-3 mb-3">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by description, vendor, or category..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 rounded-lg bg-white focus:outline-none focus:border-zinc-400 transition-colors"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        <select
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          className="text-xs border border-zinc-200 rounded-lg px-2 py-2 bg-white focus:outline-none focus:border-zinc-400"
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>{s} per page</option>
+          ))}
+        </select>
       </div>
 
       {/* Filter pills */}
@@ -220,12 +291,12 @@ function TransactionsPageInner() {
           <div className="text-right">Amount</div>
         </div>
 
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-zinc-400">
-            No transactions match this filter.
+            {search ? "No transactions match your search." : "No transactions match this filter."}
           </div>
         ) : (
-          filtered.slice(0, 300).map((tx) => {
+          paginated.map((tx) => {
             const vendor = matchedVendor(tx);
             const suspicious = matchedSuspicious(tx);
             const isSelected = selectedTx?.id === tx.id;
@@ -398,6 +469,75 @@ function TransactionsPageInner() {
           })
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-xs text-zinc-400">
+            Page {page} of {totalPages} ({filtered.length} results)
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Prev
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              // Show pages around current page
+              let pageNum: number;
+              if (totalPages <= 7) {
+                pageNum = i + 1;
+              } else if (page <= 4) {
+                pageNum = i + 1;
+              } else if (page >= totalPages - 3) {
+                pageNum = totalPages - 6 + i;
+              } else {
+                pageNum = page - 3 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`px-2.5 py-1.5 text-xs rounded-lg transition-colors ${
+                    pageNum === page
+                      ? "bg-zinc-900 text-white"
+                      : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick jump when many pages */}
+      {totalPages > 7 && (
+        <div className="text-center mt-2">
+          <span className="text-[10px] text-zinc-400">
+            Go to page:
+          </span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="ml-2 text-xs border border-zinc-200 rounded px-1.5 py-0.5 bg-white"
+          >
+            {Array.from({ length: totalPages }, (_, i) => (
+              <option key={i + 1} value={i + 1}>{i + 1}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }
