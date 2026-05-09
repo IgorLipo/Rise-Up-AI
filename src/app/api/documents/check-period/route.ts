@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   // Check if any existing document covers this period
   const { data: docs } = await supabase
     .from("documents")
-    .select("statement_data")
+    .select("id, filename, statement_data")
     .eq("company_id", member.company_id);
 
   for (const doc of docs ?? []) {
