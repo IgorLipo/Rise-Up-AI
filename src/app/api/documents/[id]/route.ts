@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { getDocument } from "@/lib/db";
+import { getDocument, deleteDocument } from "@/lib/db";
 
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+async function getAuthCompany() {
   const supabase = await createServerSupabase();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return null;
 
   const { data: member } = await supabase
     .from("company_members")
@@ -19,14 +14,39 @@ export async function GET(
     .limit(1)
     .single();
 
-  if (!member?.company_id) {
-    return NextResponse.json({ success: false, error: "No company found" }, { status: 404 });
+  return member?.company_id ?? null;
+}
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const companyId = await getAuthCompany();
+  if (!companyId) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
-  const doc = await getDocument(id, member.company_id);
+  const doc = await getDocument(id, companyId);
   if (!doc) {
     return NextResponse.json({ success: false, error: "Document not found" }, { status: 404 });
   }
   return NextResponse.json({ success: true, document: doc });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const companyId = await getAuthCompany();
+  if (!companyId) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const ok = await deleteDocument(id, companyId);
+  if (!ok) {
+    return NextResponse.json({ success: false, error: "Failed to delete document" }, { status: 500 });
+  }
+  return NextResponse.json({ success: true });
 }

@@ -7,6 +7,7 @@ import type { StatementData, ParseResult, AIInsights, SpendReviewResult, Analysi
 import { InsightCard } from "@/components/insight-card";
 import { InsightDrawer } from "@/components/insight-drawer";
 import { OwnerReviewPack } from "@/components/owner-review-pack";
+import { DuplicateConfirmDialog } from "@/components/duplicate-confirm-dialog";
 import { addDocumentHistory } from "@/lib/history";
 
 type FileStatus = "queued" | "parsing" | "checking" | "analyzing" | "saving" | "done" | "skipped" | "error";
@@ -36,6 +37,15 @@ export default function UploadPage() {
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
   const [legitimateIds, setLegitimateIds] = useState<Set<string>>(new Set());
   const [followUpIds, setFollowUpIds] = useState<Set<string>>(new Set());
+
+  // Duplicate confirmation state
+  const [duplicateDecision, setDuplicateDecision] = useState<{
+    fileName: string;
+    existingId: string;
+    existingFilename: string;
+    existingPeriod: string;
+    resolve: (action: "replace" | "skip") => void;
+  } | null>(null);
 
   const isBusiness = mode === "business";
   const hasFiles = jobs.length > 0;
@@ -110,14 +120,31 @@ export default function UploadPage() {
           });
           const checkJson = await checkRes.json();
           if (checkJson.exists) {
-            setJobs((prev) => prev.map((j, idx) =>
-              idx === i ? {
-                ...j,
-                status: "skipped",
-                skipReason: `Period ${period.from} to ${period.to} already covered by ${checkJson.existingFilename} (${checkJson.existingPeriod})`,
-              } : j
-            ));
-            continue;
+            const action = await new Promise<"replace" | "skip">((resolve) => {
+              setDuplicateDecision({
+                fileName: file.name,
+                existingId: checkJson.existingDocumentId,
+                existingFilename: checkJson.existingFilename,
+                existingPeriod: checkJson.existingPeriod,
+                resolve,
+              });
+            });
+            setDuplicateDecision(null);
+
+            if (action === "replace") {
+              await fetch(`/api/documents/${checkJson.existingDocumentId}`, { method: "DELETE" });
+              toast.success(`Replaced ${checkJson.existingFilename}`);
+              // Fall through — continue to AI analysis + save
+            } else {
+              setJobs((prev) => prev.map((j, idx) =>
+                idx === i ? {
+                  ...j,
+                  status: "skipped",
+                  skipReason: `Skipped by user (period ${checkJson.existingPeriod} exists)`,
+                } : j
+              ));
+              continue;
+            }
           }
         } catch {
           // Non-critical — proceed even if check fails
@@ -489,6 +516,18 @@ export default function UploadPage() {
         legitimateIds={legitimateIds}
         followUpIds={followUpIds}
       />
+
+      {/* Duplicate confirmation modal */}
+      {duplicateDecision && (
+        <DuplicateConfirmDialog
+          duplicate={{
+            fileName: duplicateDecision.fileName,
+            existingFilename: duplicateDecision.existingFilename,
+            existingPeriod: duplicateDecision.existingPeriod,
+          }}
+          onResolve={duplicateDecision.resolve}
+        />
+      )}
     </div>
   );
 }

@@ -89,6 +89,13 @@ export async function getDocument(id: string, companyId: string): Promise<Docume
   };
 }
 
+export async function deleteDocument(id: string, companyId: string): Promise<boolean> {
+  const supabase = await createServerSupabase();
+  await supabase.from("statement_history").delete().eq("document_id", id).eq("company_id", companyId);
+  const { error } = await supabase.from("documents").delete().eq("id", id).eq("company_id", companyId);
+  return !error;
+}
+
 export async function listDocuments(companyId: string): Promise<DocumentHistoryEntry[]> {
   const supabase = await createServerSupabase();
   const { data, error } = await supabase

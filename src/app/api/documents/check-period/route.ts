@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     if (period.from <= to && period.to >= from) {
       return NextResponse.json({
         exists: true,
+        existingDocumentId: (doc as any).id,
         existingFilename: (doc as any).filename,
         existingPeriod: `${period.from} to ${period.to}`,
       });
