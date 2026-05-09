@@ -339,8 +339,23 @@ function extractAccountInfo(text: string): StatementData["accountInfo"] {
   const periodMatch = text.match(
     /(?:from|between)\s+(\d{1,2}\s+\w+\s+\d{4})\s+(?:to|and)\s+(\d{1,2}\s+\w+\s+\d{4})/i
   );
-  if (periodMatch)
+  if (periodMatch) {
     info.statementPeriod = { from: periodMatch[1], to: periodMatch[2] };
+  } else {
+    // Fallback for NatWest continuous text: derive period from DD MON dates
+    const year = extractStatementYear(text);
+    const dateRe = /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))\b/gi;
+    const dates: string[] = [];
+    let dm: RegExpExecArray | null;
+    while ((dm = dateRe.exec(text)) !== null) {
+      const parsed = parseNatWestDate(dm[1], year);
+      if (parsed) dates.push(parsed);
+    }
+    if (dates.length >= 2) {
+      dates.sort();
+      info.statementPeriod = { from: dates[0], to: dates[dates.length - 1] };
+    }
+  }
 
   return info;
 }
