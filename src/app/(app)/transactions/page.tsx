@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react"; // useEffect already present
 import { useActiveCompany } from "@/lib/auth/client";
 import { useSearchParams } from "next/navigation";
 import type { Transaction, Subcategory } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
+import { toast } from "sonner";
 
 const SUBCATEGORIES: Array<{ value: Subcategory | "all" | "suspicious"; label: string }> = [
   { value: "all", label: "All" },
@@ -37,6 +38,7 @@ interface VendorInfo {
   monthsSeen: number;
   typicalAmount: number;
   confidence: number;
+  reasoning: string;
 }
 
 interface SuspiciousInfo {
@@ -44,6 +46,8 @@ interface SuspiciousInfo {
   reason: string;
   riskLevel: string;
 }
+
+const PAGE_SIZES = [25, 50, 100];
 
 function TransactionsPageInner() {
   const { companyId } = useActiveCompany();
@@ -54,8 +58,14 @@ function TransactionsPageInner() {
   const [filter, setFilter] = useState<Subcategory | "all" | "suspicious">(
     (searchParams.get("filter") as Subcategory | "suspicious") || "all"
   );
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [loading, setLoading] = useState(true);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [correctingTx, setCorrectingTx] = useState<string | null>(null);
+  const [correctionSubcategory, setCorrectionSubcategory] = useState<Subcategory>("one-off");
+  const [savingCorrection, setSavingCorrection] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -92,8 +102,26 @@ function TransactionsPageInner() {
         // Build vendor map from the aggregate response
         if (json.vendors?.recurring) {
           const map = new Map<string, VendorInfo>();
+
+          // Build reasoning lookup from patterns
+          const reasoningMap = new Map<string, string>();
+          for (const pe of json.patterns?.recurringExpenses ?? []) {
+            if (pe.aiReasoning) reasoningMap.set(pe.merchant?.toLowerCase(), pe.aiReasoning);
+          }
+          for (const pi of json.patterns?.recurringIncome ?? []) {
+            if (pi.aiReasoning) reasoningMap.set(pi.merchant?.toLowerCase(), pi.aiReasoning);
+          }
+          for (const nv of json.newVendors ?? []) {
+            if (nv.reasoning) reasoningMap.set(nv.merchantNormalized?.toLowerCase(), nv.reasoning);
+          }
+
           for (const v of json.vendors.recurring) {
-            map.set(v.canonicalName.toLowerCase(), v);
+            map.set(v.canonicalName.toLowerCase(), {
+              ...v,
+              reasoning: reasoningMap.get(v.canonicalName.toLowerCase()) ?? v.subcategory
+                ? `Classified as ${v.subcategory.replace(/-/g, " ")} based on ${v.appearanceCount} appearances across ${v.monthsSeen} months`
+                : "",
+            });
           }
           setVendorMap(map);
         }
@@ -111,21 +139,51 @@ function TransactionsPageInner() {
   }, [companyId]);
 
   const filtered = useMemo(() => {
+    let result = transactions;
+
+    // Apply category filter
     if (filter === "suspicious") {
-      return transactions.filter((tx) => {
+      result = result.filter((tx) => {
         const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
         return suspiciousMap.has(key);
       });
+    } else if (filter !== "all") {
+      result = result.filter((tx) => {
+        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+        const vendor = vendorMap.get(key);
+        if (vendor) return vendor.subcategory === filter;
+        const { subcategory } = classifySubcategory(tx.description);
+        return subcategory === filter;
+      });
     }
-    if (filter === "all") return transactions;
-    return transactions.filter((tx) => {
-      const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
-      const vendor = vendorMap.get(key);
-      if (vendor) return vendor.subcategory === filter;
-      const { subcategory } = classifySubcategory(tx.description);
-      return subcategory === filter;
-    });
-  }, [transactions, filter, vendorMap, suspiciousMap]);
+
+    // Apply text search
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter((tx) => {
+        const desc = tx.description.toLowerCase();
+        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+        const vendor = vendorMap.get(key);
+        const subcat = vendor?.subcategory ?? classifySubcategory(tx.description).subcategory;
+        const catLabel = subcat.replace(/-/g, " ");
+        return desc.includes(q) || catLabel.includes(q) || (vendor?.canonicalName?.toLowerCase().includes(q));
+      });
+    }
+
+    return result;
+  }, [transactions, filter, vendorMap, suspiciousMap, search]);
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search]);
 
   const matchedVendor = (tx: Transaction): VendorInfo | null => {
     const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
@@ -135,6 +193,30 @@ function TransactionsPageInner() {
   const matchedSuspicious = (tx: Transaction): SuspiciousInfo | null => {
     const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     return suspiciousMap.get(key) ?? null;
+  };
+
+  const handleCorrect = async (tx: Transaction) => {
+    setSavingCorrection(true);
+    try {
+      const r = await fetch("/api/corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionDescription: tx.description,
+          originalSubcategory: tx.subcategory ?? "one-off",
+          correctedSubcategory: correctionSubcategory,
+          transactionDate: tx.date,
+          transactionAmount: tx.amount,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast.success(`Saved: ${tx.description.slice(0, 40)} → ${correctionSubcategory.replace(/-/g, " ")}`);
+      setCorrectingTx(null);
+    } catch {
+      toast.error("Failed to save correction");
+    } finally {
+      setSavingCorrection(false);
+    }
   };
 
   if (loading) {
@@ -163,8 +245,44 @@ function TransactionsPageInner() {
           <p className="text-xs text-zinc-400 mt-0.5">
             {filtered.length} of {transactions.length} transactions
             {vendorMap.size > 0 ? ` · ${vendorMap.size} vendors known` : ""}
+            {search ? ` · matching "${search}"` : ""}
           </p>
         </div>
+      </div>
+
+      {/* Search + page size */}
+      <div className="flex gap-3 mb-3">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by description, vendor, or category..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 rounded-lg bg-white focus:outline-none focus:border-zinc-400 transition-colors"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        <select
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          className="text-xs border border-zinc-200 rounded-lg px-2 py-2 bg-white focus:outline-none focus:border-zinc-400"
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>{s} per page</option>
+          ))}
+        </select>
       </div>
 
       {/* Filter pills */}
@@ -192,12 +310,12 @@ function TransactionsPageInner() {
           <div className="text-right">Amount</div>
         </div>
 
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-zinc-400">
-            No transactions match this filter.
+            {search ? "No transactions match your search." : "No transactions match this filter."}
           </div>
         ) : (
-          filtered.slice(0, 300).map((tx) => {
+          paginated.map((tx) => {
             const vendor = matchedVendor(tx);
             const suspicious = matchedSuspicious(tx);
             const isSelected = selectedTx?.id === tx.id;
@@ -281,10 +399,59 @@ function TransactionsPageInner() {
                                 <span className="text-zinc-700">{formatCurrency(vendor.typicalAmount)}</span>
                               </div>
                             )}
+                            {vendor.reasoning && (
+                              <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-100">
+                                <div className="text-blue-700 text-[11px] font-medium mb-0.5">AI reasoning</div>
+                                <div className="text-blue-600 text-[11px] leading-relaxed">{vendor.reasoning}</div>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="text-zinc-400">No vendor intelligence available. Upload more statements to build vendor profiles.</div>
                         )}
+
+                        {/* Correction UI */}
+                        <div className="mt-3 pt-3 border-t border-zinc-200">
+                          {correctingTx === tx.id ? (
+                            <div className="space-y-2">
+                              <div className="text-zinc-500 font-medium text-[11px]">Correct category</div>
+                              <select
+                                value={correctionSubcategory}
+                                onChange={(e) => setCorrectionSubcategory(e.target.value as Subcategory)}
+                                className="w-full text-xs border border-zinc-300 rounded px-2 py-1 bg-white"
+                              >
+                                {SUBCATEGORIES.filter((s) => s.value !== "all" && s.value !== "suspicious").map((s) => (
+                                  <option key={s.value} value={s.value}>{s.label}</option>
+                                ))}
+                              </select>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleCorrect(tx)}
+                                  disabled={savingCorrection}
+                                  className="px-2.5 py-1 rounded text-[11px] font-medium bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
+                                >
+                                  {savingCorrection ? "Saving..." : "Save"}
+                                </button>
+                                <button
+                                  onClick={() => setCorrectingTx(null)}
+                                  className="px-2.5 py-1 rounded text-[11px] text-zinc-500 hover:bg-zinc-200"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setCorrectingTx(tx.id);
+                                setCorrectionSubcategory((vendor?.subcategory as Subcategory) ?? "one-off");
+                              }}
+                              className="text-[11px] text-zinc-400 hover:text-zinc-700 transition-colors"
+                            >
+                              Correct category →
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div>
@@ -327,6 +494,75 @@ function TransactionsPageInner() {
           })
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-xs text-zinc-400">
+            Page {page} of {totalPages} ({filtered.length} results)
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Prev
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              // Show pages around current page
+              let pageNum: number;
+              if (totalPages <= 7) {
+                pageNum = i + 1;
+              } else if (page <= 4) {
+                pageNum = i + 1;
+              } else if (page >= totalPages - 3) {
+                pageNum = totalPages - 6 + i;
+              } else {
+                pageNum = page - 3 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`px-2.5 py-1.5 text-xs rounded-lg transition-colors ${
+                    pageNum === page
+                      ? "bg-zinc-900 text-white"
+                      : "border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 text-xs rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick jump when many pages */}
+      {totalPages > 7 && (
+        <div className="text-center mt-2">
+          <span className="text-[10px] text-zinc-400">
+            Go to page:
+          </span>
+          <select
+            value={page}
+            onChange={(e) => setPage(Number(e.target.value))}
+            className="ml-2 text-xs border border-zinc-200 rounded px-1.5 py-0.5 bg-white"
+          >
+            {Array.from({ length: totalPages }, (_, i) => (
+              <option key={i + 1} value={i + 1}>{i + 1}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

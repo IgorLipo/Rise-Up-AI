@@ -12,6 +12,7 @@ import { VendorLearning } from "@/components/dashboard/vendor-learning";
 import { SuspiciousFlagged } from "@/components/dashboard/suspicious-flagged";
 import { DailyForecastChart } from "@/components/charts/daily-forecast-chart";
 import { InsightHeroCard } from "@/components/dashboard/insight-hero-card";
+import { DateRangeSelector, type DateRangePreset } from "@/components/dashboard/date-range-selector";
 
 interface AggregateResponse {
   hasData: boolean;
@@ -61,6 +62,7 @@ interface AggregateResponse {
       confidence: number;
       nextExpected: string;
       occurrences: number;
+      aiReasoning: string;
     }>;
     recurringIncome: Array<{
       merchant: string;
@@ -70,9 +72,34 @@ interface AggregateResponse {
       confidence: number;
       nextExpected: string;
       occurrences: number;
+      aiReasoning: string;
     }>;
     oneOffExpenses: number;
     oneOffIncome: number;
+  };
+  newVendors: Array<{
+    merchantRaw: string;
+    merchantNormalized: string;
+    subcategory: string;
+    confidence: number;
+    reasoning: string;
+  }>;
+  entities: {
+    properties: Array<{
+      key: string;
+      displayName: string;
+      confidence: number;
+      matchType: string;
+      transactionCount: number;
+    }>;
+    people: Array<{
+      key: string;
+      personName: string;
+      role: string;
+      confidence: number;
+      indicators: string[];
+      transactionCount: number;
+    }>;
   };
   vendors: {
     total: number;
@@ -143,11 +170,20 @@ export default function DashboardPage() {
   const [data, setData] = useState<AggregateResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<{ preset: DateRangePreset; from?: string; to?: string }>({
+    preset: "all",
+  });
 
   useEffect(() => {
     if (!companyId) return;
 
-    fetch("/api/documents/aggregate")
+    const params = new URLSearchParams();
+    if (dateRange.from) params.set("from", dateRange.from);
+    if (dateRange.to) params.set("to", dateRange.to);
+    const qs = params.toString();
+    const url = `/api/documents/aggregate${qs ? `?${qs}` : ""}`;
+
+    fetch(url)
       .then((r) => {
         if (!r.ok) throw new Error(r.statusText);
         return r.json();
@@ -155,6 +191,9 @@ export default function DashboardPage() {
       .then((json) => {
         if (json.hasData) {
           setData(json);
+        } else if (dateRange.preset !== "all") {
+          // If filtering returned no data, keep previous data but show a note
+          setData(null);
         }
         setLoading(false);
       })
@@ -162,7 +201,7 @@ export default function DashboardPage() {
         setError(err.message);
         setLoading(false);
       });
-  }, [companyId]);
+  }, [companyId, dateRange]);
 
   if (loading) return <DashboardSkeleton />;
   if (error) return <EmptyDashboard />;
@@ -182,12 +221,15 @@ export default function DashboardPage() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => router.push("/upload")}
-          className="px-4 py-2 rounded-lg bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors"
-        >
-          Upload statement
-        </button>
+        <div className="flex items-center gap-2">
+          <DateRangeSelector value={dateRange} onChange={setDateRange} />
+          <button
+            onClick={() => router.push("/upload")}
+            className="px-4 py-2 rounded-lg bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors"
+          >
+            Upload statement
+          </button>
+        </div>
       </div>
 
       {/* Cash position + status */}

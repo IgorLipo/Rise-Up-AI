@@ -25,12 +25,20 @@ export default function Home() {
  <span className="font-display text-xl font-bold text-white tracking-tight">
  Statement<span className="text-amber-400">Reader</span>
  </span>
+ <div className="flex items-center gap-3">
  <Link
- href="/upload"
+ href="/login"
+ className="text-sm text-zinc-300 hover:text-white transition-colors"
+ >
+ Sign in
+ </Link>
+ <Link
+ href="/register"
  className="btn-cta text-sm px-5 py-2.5"
  >
- Try it free
+ Get started
  </Link>
+ </div>
  </div>
  </nav>
 
@@ -74,7 +82,7 @@ export default function Home() {
  ))}
  </div>
  <span className="text-sm text-zinc-500">
- Free. No sign-up. No bank connections.
+ Free account. No bank connections.
  </span>
  </div>
  </div>
@@ -102,7 +110,7 @@ export default function Home() {
  Three steps to clarity
  </h2>
  <p className="text-center text-zinc-400 mb-16 max-w-lg mx-auto text-sm">
- No bank connections. No sign-ups. Just upload and understand.
+ No bank connections. Just upload and understand.
  </p>
  <div className="grid md:grid-cols-3 gap-8">
  {[
@@ -239,7 +247,7 @@ export default function Home() {
  Ready to understand your money?
  </h2>
  <p className="mt-4 text-zinc-300 max-w-md mx-auto text-lg">
- Upload your first bank statement. Instant insights. No sign-up. No bank connections.
+ Upload your first bank statement. Instant insights. Free account. No bank connections.
  </p>
  <Link
  href="/upload"
