@@ -32,7 +32,7 @@ export interface AccuracySummary {
   trend: "improving" | "stable" | "degrading" | "insufficient-data";
 }
 
-interface ForecastSnapshot {
+export interface ForecastSnapshot {
   month: string;
   predictedIncome: number;
   predictedExpenses: number;
@@ -40,7 +40,7 @@ interface ForecastSnapshot {
   confidence: number;
 }
 
-interface MonthActuals {
+export interface MonthActuals {
   totalIncome: number;
   totalExpenses: number;
   closingBalance: number;

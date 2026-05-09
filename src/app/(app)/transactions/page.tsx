@@ -38,6 +38,7 @@ interface VendorInfo {
   monthsSeen: number;
   typicalAmount: number;
   confidence: number;
+  reasoning: string;
 }
 
 interface SuspiciousInfo {
@@ -101,8 +102,26 @@ function TransactionsPageInner() {
         // Build vendor map from the aggregate response
         if (json.vendors?.recurring) {
           const map = new Map<string, VendorInfo>();
+
+          // Build reasoning lookup from patterns
+          const reasoningMap = new Map<string, string>();
+          for (const pe of json.patterns?.recurringExpenses ?? []) {
+            if (pe.aiReasoning) reasoningMap.set(pe.merchant?.toLowerCase(), pe.aiReasoning);
+          }
+          for (const pi of json.patterns?.recurringIncome ?? []) {
+            if (pi.aiReasoning) reasoningMap.set(pi.merchant?.toLowerCase(), pi.aiReasoning);
+          }
+          for (const nv of json.newVendors ?? []) {
+            if (nv.reasoning) reasoningMap.set(nv.merchantNormalized?.toLowerCase(), nv.reasoning);
+          }
+
           for (const v of json.vendors.recurring) {
-            map.set(v.canonicalName.toLowerCase(), v);
+            map.set(v.canonicalName.toLowerCase(), {
+              ...v,
+              reasoning: reasoningMap.get(v.canonicalName.toLowerCase()) ?? v.subcategory
+                ? `Classified as ${v.subcategory.replace(/-/g, " ")} based on ${v.appearanceCount} appearances across ${v.monthsSeen} months`
+                : "",
+            });
           }
           setVendorMap(map);
         }
@@ -378,6 +397,12 @@ function TransactionsPageInner() {
                               <div className="flex justify-between">
                                 <span className="text-zinc-500">Typical amount</span>
                                 <span className="text-zinc-700">{formatCurrency(vendor.typicalAmount)}</span>
+                              </div>
+                            )}
+                            {vendor.reasoning && (
+                              <div className="mt-2 p-2 rounded bg-blue-50 border border-blue-100">
+                                <div className="text-blue-700 text-[11px] font-medium mb-0.5">AI reasoning</div>
+                                <div className="text-blue-600 text-[11px] leading-relaxed">{vendor.reasoning}</div>
                               </div>
                             )}
                           </div>

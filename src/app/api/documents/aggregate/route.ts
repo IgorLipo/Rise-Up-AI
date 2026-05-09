@@ -64,6 +64,11 @@ export async function GET(req: NextRequest) {
 
   const companyId = member.company_id;
 
+  // Optional date range filtering
+  const url = new URL(req.url);
+  const dateFrom = url.searchParams.get("from");
+  const dateTo = url.searchParams.get("to");
+
   // Fetch ALL documents for this company
   const { data: docs } = await supabase
     .from("documents")
@@ -113,14 +118,56 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Apply date range filter to transactions
+  const filteredTransactions = dateFrom || dateTo
+    ? allTransactions.filter((tx) => {
+        if (dateFrom && tx.date < dateFrom) return false;
+        if (dateTo && tx.date > dateTo) return false;
+        return true;
+      })
+    : allTransactions;
+
+  // If filtering, update statement summaries to reflect filtered data
+  if (dateFrom || dateTo) {
+    for (const summary of statementSummaries) {
+      const stmtTxs = allTransactions.filter((tx) => {
+        const txMonth = tx.date.slice(0, 7);
+        return txMonth === summary.month;
+      });
+      const filteredStmtTxs = stmtTxs.filter((tx) => {
+        if (dateFrom && tx.date < dateFrom) return false;
+        if (dateTo && tx.date > dateTo) return false;
+        return true;
+      });
+      const income = filteredStmtTxs.filter((t) => t.type === "credit").reduce((s, t) => s + t.amount, 0);
+      const expenses = filteredStmtTxs.filter((t) => t.type === "debit").reduce((s, t) => s + t.amount, 0);
+      summary.totalIncome = income;
+      summary.totalExpenses = expenses;
+      summary.netFlow = income - expenses;
+      summary.transactionCount = filteredStmtTxs.length;
+    }
+  }
+
+  // Use filtered transactions for all downstream processing
+  const workingTransactions = filteredTransactions;
+
   // Get current balance from the most recent statement
   const latestDoc = docs[docs.length - 1];
   const latestStmt = latestDoc.statement_data as unknown as StatementData;
   const currentBalance = latestStmt?.accountInfo?.closingBalance
-    ?? allTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
+    ?? workingTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
 
   // ── Cross-Month Learning ──
   const learningReport = learnFromHistory(allTransactions);
+
+  // Build entity attributes for vendors (must be before vendorIntel enrichment)
+  const vendorEntityAttrs = new Map<string, { linkedProperty: string | null; linkedPerson: string | null; personRole: string | null }>();
+  for (const vendor of learningReport.vendors.values()) {
+    vendorEntityAttrs.set(
+      vendor.canonicalName,
+      entityAttributesForVendor(vendor.canonicalName, vendor.allDescriptions)
+    );
+  }
 
   // Build vendor intel entries from learning
   const vendorIntelEntries = buildVendorIntelEntries(learningReport, companyId);
@@ -193,7 +240,7 @@ export async function GET(req: NextRequest) {
     ?? docs[docs.length - 1].uploaded_at?.slice(0, 10)
     ?? new Date().toISOString().split("T")[0];
   const statementClosingBalance = latestStmt?.accountInfo?.closingBalance
-    ?? allTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
+    ?? workingTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
   const catchUp = catchUpBalance(patterns, statementClosingBalance, lastStatementDate);
   const effectiveBalance = catchUp.isEstimated ? catchUp.estimatedBalance : statementClosingBalance;
 
@@ -201,7 +248,7 @@ export async function GET(req: NextRequest) {
 
   // ── Monthly grouping ──
   const byMonth = new Map<string, Transaction[]>();
-  for (const tx of allTransactions) {
+  for (const tx of workingTransactions) {
     const m = tx.date.slice(0, 7);
     if (!byMonth.has(m)) byMonth.set(m, []);
     byMonth.get(m)!.push(tx);
@@ -227,9 +274,9 @@ export async function GET(req: NextRequest) {
   }
   monthlySummaries.sort((a, b) => b.month.localeCompare(a.month));
 
-  // ── Category Breakdowns (from all transactions, classified) ──
+  // ── Category Breakdowns (from filtered transactions, classified) ──
   const categoryMap = new Map<string, { total: number; count: number; transactions: CategorySummary["transactions"] }>();
-  for (const tx of allTransactions) {
+  for (const tx of workingTransactions) {
     if (tx.type !== "debit") continue;
     const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
@@ -293,23 +340,14 @@ export async function GET(req: NextRequest) {
   }));
 
   // ── Entity Extraction (properties + people) ──
-  const txDescriptors = allTransactions.map((tx) => ({ id: tx.id, description: tx.description }));
+  const txDescriptors = workingTransactions.map((tx) => ({ id: tx.id, description: tx.description }));
   const entities = extractEntities(txDescriptors);
 
-  // Enrich vendor intel with entity attributes
-  const vendorEntityAttrs = new Map<string, { linkedProperty: string | null; linkedPerson: string | null; personRole: string | null }>();
-  for (const vendor of learningReport.vendors.values()) {
-    vendorEntityAttrs.set(
-      vendor.canonicalName,
-      entityAttributesForVendor(vendor.canonicalName, vendor.allDescriptions)
-    );
-  }
-
   // ── Accumulated Stats ──
-  const totalIncome = allTransactions
+  const totalIncome = workingTransactions
     .filter((t) => t.type === "credit")
     .reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = allTransactions
+  const totalExpenses = workingTransactions
     .filter((t) => t.type === "debit")
     .reduce((s, t) => s + t.amount, 0);
 
@@ -317,7 +355,7 @@ export async function GET(req: NextRequest) {
     hasData: true,
     documents: statementSummaries,
     totalDocuments: docs.length,
-    totalTransactions: allTransactions.length,
+    totalTransactions: workingTransactions.length,
 
     // Accumulated stats
     accumulated: {
@@ -325,11 +363,11 @@ export async function GET(req: NextRequest) {
       totalExpenses,
       netFlow: totalIncome - totalExpenses,
       statementCount: docs.length,
-      totalTransactions: allTransactions.length,
-      dateRange: allTransactions.length > 0
+      totalTransactions: workingTransactions.length,
+      dateRange: workingTransactions.length > 0
         ? {
-            from: allTransactions.reduce((earliest, tx) => tx.date < earliest ? tx.date : earliest, allTransactions[0].date),
-            to: allTransactions.reduce((latest, tx) => tx.date > latest ? tx.date : latest, allTransactions[0].date),
+            from: workingTransactions.reduce((earliest, tx) => tx.date < earliest ? tx.date : earliest, workingTransactions[0].date),
+            to: workingTransactions.reduce((latest, tx) => tx.date > latest ? tx.date : latest, workingTransactions[0].date),
           }
         : null,
     },
@@ -371,6 +409,7 @@ export async function GET(req: NextRequest) {
         confidence: p.confidence,
         nextExpected: p.nextExpected,
         occurrences: p.occurrences.length,
+        aiReasoning: (p as any).aiReasoning ?? "",
       })),
       recurringIncome: patterns.recurringIncome.map((p) => ({
         merchant: (p as any).merchant,
@@ -380,10 +419,20 @@ export async function GET(req: NextRequest) {
         confidence: p.confidence,
         nextExpected: p.nextExpected,
         occurrences: p.occurrences.length,
+        aiReasoning: (p as any).aiReasoning ?? "",
       })),
       oneOffExpenses: patterns.oneOffExpenses.length,
       oneOffIncome: patterns.oneOffIncome.length,
     },
+
+    // New vendors discovered by AI (with reasoning)
+    newVendors: newVendors.map((v) => ({
+      merchantRaw: v.merchantRaw,
+      merchantNormalized: v.merchantNormalized,
+      subcategory: v.subcategory,
+      confidence: v.confidence,
+      reasoning: v.reasoning,
+    })),
 
     // Vendor learning
     vendors: {
