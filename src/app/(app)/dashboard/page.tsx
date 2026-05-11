@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useActiveCompany } from "@/lib/auth/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { MonthEndForecast } from "@/lib/forecast";
 import { EmptyDashboard } from "@/components/dashboard/empty-dashboard";
 import { AccumulatedStats } from "@/components/dashboard/accumulated-stats";
@@ -13,6 +13,7 @@ import { SuspiciousFlagged } from "@/components/dashboard/suspicious-flagged";
 import { DailyForecastChart } from "@/components/charts/daily-forecast-chart";
 import { InsightHeroCard } from "@/components/dashboard/insight-hero-card";
 import { DateRangeSelector, type DateRangePreset } from "@/components/dashboard/date-range-selector";
+import { TabNavigation } from "@/components/dashboard/tab-navigation";
 
 interface AggregateResponse {
   hasData: boolean;
@@ -215,7 +216,24 @@ export default function DashboardPage() {
   if (error) return <EmptyDashboard />;
   if (!data || !data.hasData) return <EmptyDashboard />;
 
-  const { currentPosition, forecast, accumulated, monthly, categories, vendors, crossMonthInsights, suspicious } = data;
+  const { currentPosition, forecast, accumulated, categories, vendors, crossMonthInsights, suspicious } = data;
+
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab") ?? "forecast";
+
+  const handleTabChange = (tabId: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tabId);
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+  };
+
+  const TABS = [
+    { id: "forecast", label: "Current Forecast" },
+    { id: "history", label: "Monthly History" },
+    { id: "intelligence", label: "Accumulated Intelligence" },
+    { id: "transactions", label: "Transactions" },
+    { id: "review", label: "Review Queue" },
+  ];
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
@@ -240,94 +258,87 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Cash position + status */}
-      <AccumulatedStats
-        currentBalance={currentPosition.balance ?? 0}
-        predictedMonthEnd={forecast?.predictedMonthEnd ?? 0}
-        remainingIncome={forecast?.remainingIncome ?? 0}
-        remainingExpenses={forecast?.remainingExpenses ?? 0}
-        status={forecast?.status ?? "safe"}
-        confidence={forecast?.confidence ?? 0}
-        netFlow={accumulated.netFlow}
-        totalDocuments={data.totalDocuments}
-        totalTransactions={data.totalTransactions}
-        balanceIsEstimated={currentPosition.isEstimated}
-        balanceCatchUpDays={0}
-        statementClosingBalance={currentPosition.balance ?? undefined}
-        dateFilterActive={false}
-        balanceSource={currentPosition.source}
-        isStale={currentPosition.isStale}
-        statementPeriodEnd={currentPosition.statementPeriodEnd ?? undefined}
-      />
+      {/* Tab navigation */}
+      <TabNavigation tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} />
 
-      {/* Insight hero */}
-      {forecast && (
-        <InsightHeroCard
-          headline={forecast.statusReason}
-          summary={buildInsightSummary(forecast, categories)}
-          severity={
-            forecast.status === "safe" ? "info"
-              : forecast.status === "watch" ? "warning"
-              : "critical"
-          }
-        />
-      )}
-
-      {/* Daily forecast chart */}
-      {forecast && forecast.dailyForecast.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider mb-3">
-            Daily forecast
-          </h2>
-          <DailyForecastChart data={forecast.dailyForecast} />
-        </div>
-      )}
-
-      {/* Two-column layout for breakdowns */}
-      <div className="grid lg:grid-cols-2 gap-5">
-        {/* Category breakdown */}
-        <div className="bg-white border border-zinc-200 rounded-xl p-4">
-          <CategoryBreakdown categories={categories} />
-        </div>
-
-        {/* Monthly summaries */}
-        <div className="bg-white border border-zinc-200 rounded-xl p-4">
-          <MonthlySummaries
-            monthly={monthly}
-            onSelectMonth={(month) => router.push(`/transactions?month=${month}`)}
+      {/* Tab content */}
+      {activeTab === "forecast" && (
+        <div className="space-y-5 mt-5">
+          <AccumulatedStats
+            currentBalance={currentPosition.balance ?? 0}
+            predictedMonthEnd={forecast?.predictedMonthEnd ?? 0}
+            remainingIncome={forecast?.remainingIncome ?? 0}
+            remainingExpenses={forecast?.remainingExpenses ?? 0}
+            status={forecast?.status ?? "safe"}
+            confidence={forecast?.confidence ?? 0}
+            netFlow={accumulated.netFlow}
+            totalDocuments={data.totalDocuments}
+            totalTransactions={data.totalTransactions}
+            balanceIsEstimated={currentPosition.isEstimated}
+            balanceCatchUpDays={0}
+            statementClosingBalance={currentPosition.balance ?? undefined}
+            dateFilterActive={false}
+            balanceSource={currentPosition.source}
+            isStale={currentPosition.isStale}
+            statementPeriodEnd={currentPosition.statementPeriodEnd ?? undefined}
+            forecast={data.forecast}
+            patterns={data.patterns}
           />
+          {forecast && (
+            <InsightHeroCard
+              headline={forecast.statusReason}
+              summary={buildInsightSummary(forecast, categories)}
+              severity={
+                forecast.status === "safe" ? "info"
+                  : forecast.status === "watch" ? "warning"
+                  : "critical"
+              }
+            />
+          )}
+          {forecast && forecast.dailyForecast.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider mb-3">
+                Daily forecast
+              </h2>
+              <DailyForecastChart data={forecast.dailyForecast} />
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Vendor learning */}
-      <div className="bg-white border border-zinc-200 rounded-xl p-4">
-        <VendorLearning
-          totalVendors={vendors.total}
-          recurring={vendors.recurring}
-          suspicious={vendors.suspicious}
-          oneOff={vendors.oneOff}
-          crossMonthInsights={crossMonthInsights}
-        />
-      </div>
+      {activeTab === "history" && (
+        <div className="mt-5 p-8 text-center text-zinc-400 text-sm">
+          Monthly history &mdash; implemented in Plan 02-02
+        </div>
+      )}
 
-      {/* Suspicious / flagged transactions */}
-      <SuspiciousFlagged flagged={suspicious} />
+      {activeTab === "intelligence" && (
+        <div className="space-y-5 mt-5">
+          <div className="bg-white border border-zinc-200 rounded-xl p-4">
+            <VendorLearning
+              totalVendors={vendors.total}
+              recurring={vendors.recurring}
+              suspicious={vendors.suspicious}
+              oneOff={vendors.oneOff}
+              crossMonthInsights={crossMonthInsights}
+            />
+          </div>
+        </div>
+      )}
 
-      {/* Quick links */}
-      <div className="flex gap-3">
-        <button
-          onClick={() => router.push("/forecast")}
-          className="flex-1 px-4 py-3 rounded-xl border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
-        >
-          View full forecast →
-        </button>
-        <button
-          onClick={() => router.push("/transactions")}
-          className="flex-1 px-4 py-3 rounded-xl border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
-        >
-          Browse all transactions →
-        </button>
-      </div>
+      {activeTab === "transactions" && (
+        <div className="space-y-5 mt-5">
+          <div className="bg-white border border-zinc-200 rounded-xl p-4">
+            <CategoryBreakdown categories={categories} />
+          </div>
+        </div>
+      )}
+
+      {activeTab === "review" && (
+        <div className="space-y-5 mt-5">
+          <SuspiciousFlagged flagged={suspicious} />
+        </div>
+      )}
     </div>
   );
 }
