@@ -17,6 +17,7 @@ interface Props {
   balanceIsEstimated?: boolean;
   balanceCatchUpDays?: number;
   statementClosingBalance?: number;
+  dateFilterActive?: boolean;
 }
 
 export function AccumulatedStats({
@@ -32,7 +33,18 @@ export function AccumulatedStats({
   balanceIsEstimated,
   balanceCatchUpDays,
   statementClosingBalance,
+  dateFilterActive,
 }: Props) {
+  // Determine the balance subtitle based on context
+  let balanceSubtitle: string;
+  if (dateFilterActive) {
+    balanceSubtitle = "Filtered period net";
+  } else if (balanceIsEstimated) {
+    balanceSubtitle = `Estimated (${balanceCatchUpDays}d projection)`;
+  } else {
+    balanceSubtitle = "Latest statement";
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -44,7 +56,7 @@ export function AccumulatedStats({
             {formatCurrency(currentBalance)}
           </div>
           <div className="text-xs text-zinc-400 mt-1">
-            {balanceIsEstimated ? `Estimated (${balanceCatchUpDays}d projection)` : "Latest statement"}
+            {balanceSubtitle}
           </div>
           {balanceIsEstimated && statementClosingBalance !== undefined && (
             <div className="text-[10px] text-amber-600 mt-1">

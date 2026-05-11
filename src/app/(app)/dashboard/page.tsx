@@ -23,6 +23,7 @@ interface AggregateResponse {
   balanceIsEstimated?: boolean;
   balanceCatchUpDays?: number;
   lastStatementDate?: string;
+  dateFilterActive?: boolean;
   accumulated: {
     totalIncome: number;
     totalExpenses: number;
@@ -39,6 +40,7 @@ interface AggregateResponse {
     totalExpenses: number;
     netFlow: number;
     transactionCount: number;
+    status: "safe" | "watch" | "risk" | "critical";
   }>;
   categories: Array<{
     category: string;
@@ -246,6 +248,7 @@ export default function DashboardPage() {
         balanceIsEstimated={data.balanceIsEstimated}
         balanceCatchUpDays={data.balanceCatchUpDays}
         statementClosingBalance={data.statementClosingBalance}
+        dateFilterActive={data.dateFilterActive}
       />
 
       {/* Insight hero */}

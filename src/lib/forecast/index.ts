@@ -45,6 +45,8 @@ export interface CatchUpResult {
   isEstimated: boolean;
 }
 
+const MAX_CATCHUP_DAYS = 30;
+
 export function catchUpBalance(
   patterns: EnrichedDetectedPatterns,
   lastKnownBalance: number,
@@ -63,13 +65,27 @@ export function catchUpBalance(
     };
   }
 
+  const daysSince = daysBetween(lastKnownDate, todayStr);
+
+  // If last statement is too old to project reliably, use last known balance as-is
+  if (daysSince > MAX_CATCHUP_DAYS) {
+    return {
+      estimatedBalance: lastKnownBalance,
+      lastKnownBalance,
+      lastKnownDate,
+      daysProjected: daysSince,
+      isEstimated: false, // treat as "stale" rather than estimated
+    };
+  }
+
+  const horizon = addDays(lastKnownDate, MAX_CATCHUP_DAYS);
   let balance = lastKnownBalance;
 
   for (const payment of patterns.recurringExpenses) {
     if (payment.occurrences.length < 2) continue;
     const gap = computeAverageGap(payment.occurrences);
     let nextDate = addDays(payment.lastOccurrence, gap);
-    while (nextDate <= todayStr) {
+    while (nextDate <= horizon && nextDate <= todayStr) {
       balance -= payment.typicalAmount;
       nextDate = addDays(nextDate, gap);
     }
@@ -79,7 +95,7 @@ export function catchUpBalance(
     if (income.occurrences.length < 2) continue;
     const gap = computeAverageGap(income.occurrences);
     let nextDate = addDays(income.lastOccurrence, gap);
-    while (nextDate <= todayStr) {
+    while (nextDate <= horizon && nextDate <= todayStr) {
       balance += income.typicalAmount;
       nextDate = addDays(nextDate, gap);
     }
@@ -89,7 +105,7 @@ export function catchUpBalance(
     estimatedBalance: balance,
     lastKnownBalance,
     lastKnownDate,
-    daysProjected: daysBetween(lastKnownDate, todayStr),
+    daysProjected: daysSince,
     isEstimated: true,
   };
 }

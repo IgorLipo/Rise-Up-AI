@@ -28,6 +28,8 @@ interface MonthlySummary {
   totalExpenses: number;
   netFlow: number;
   transactionCount: number;
+  /** Per-month health status: safe | watch | risk | critical */
+  status: "safe" | "watch" | "risk" | "critical";
 }
 
 interface CategorySummary {
@@ -42,6 +44,17 @@ interface CategorySummary {
     amount: number;
     type: "credit" | "debit";
   }>;
+}
+
+/** Compute per-month status based on income/expense ratio and net flow direction. */
+function monthStatus(income: number, expenses: number): MonthlySummary["status"] {
+  if (income === 0 && expenses === 0) return "safe";
+  if (expenses === 0) return "safe"; // all income, no outgoings
+  const ratio = income / expenses;
+  if (ratio >= 1.1) return "safe";       // comfortably above break-even
+  if (ratio >= 0.75) return "watch";     // tight
+  if (ratio >= 0.4) return "risk";       // burning cash
+  return "critical";                      // income way below expenses
 }
 
 export async function GET(req: NextRequest) {
@@ -68,6 +81,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const dateFrom = url.searchParams.get("from");
   const dateTo = url.searchParams.get("to");
+  const dateFilterActive = !!(dateFrom || dateTo);
 
   // Fetch ALL documents for this company
   const { data: docs } = await supabase
@@ -151,13 +165,7 @@ export async function GET(req: NextRequest) {
   // Use filtered transactions for all downstream processing
   const workingTransactions = filteredTransactions;
 
-  // Get current balance from the most recent statement
-  const latestDoc = docs[docs.length - 1];
-  const latestStmt = latestDoc.statement_data as unknown as StatementData;
-  const currentBalance = latestStmt?.accountInfo?.closingBalance
-    ?? workingTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
-
-  // ── Cross-Month Learning ──
+  // ── Cross-Month Learning (always uses all transactions for accuracy) ──
   const learningReport = learnFromHistory(allTransactions);
 
   // Build entity attributes for vendors (must be before vendorIntel enrichment)
@@ -186,8 +194,8 @@ export async function GET(req: NextRequest) {
     upsertVendorIntelBatch(vendorIntelEntries).catch(() => {});
   }
 
-  // ── Suspicious Detection ──
-  const suspicious = detectAllSuspicious(allTransactions);
+  // ── Suspicious Detection (always uses all transactions) ──
+  const allSuspicious = detectAllSuspicious(allTransactions);
 
   // ── Pattern Detection (with known vendors + DB intel) ──
   // Build known vendor map from cross-month learning
@@ -232,19 +240,120 @@ export async function GET(req: NextRequest) {
     // Non-critical
   }
 
+  // Pattern detection always uses all transactions for accuracy
   const { patterns, newVendors } = await detectAllAsync(allTransactions, knownVendors);
 
-  // Estimate current balance by projecting patterns from last statement to today
-  const lastStatementDate = latestStmt?.accountInfo?.statementPeriod?.to
-    ?? latestStmt?.transactions?.[latestStmt.transactions.length - 1]?.date
-    ?? docs[docs.length - 1].uploaded_at?.slice(0, 10)
-    ?? new Date().toISOString().split("T")[0];
-  const statementClosingBalance = latestStmt?.accountInfo?.closingBalance
-    ?? workingTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
-  const catchUp = catchUpBalance(patterns, statementClosingBalance, lastStatementDate);
-  const effectiveBalance = catchUp.isEstimated ? catchUp.estimatedBalance : statementClosingBalance;
+  // ── Build a set of canonical merchant names visible in the filtered range ──
+  const filteredCoreKeys = new Set<string>();
+  for (const tx of workingTransactions) {
+    const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    filteredCoreKeys.add(coreKey);
+    // Also collect the description itself as a fallback check
+    filteredCoreKeys.add(tx.description.toLowerCase().trim());
+  }
 
-  const forecast = generateForecast(patterns, effectiveBalance);
+  // ── Balance + Forecast ──
+  // When a date filter is active, the balance is the net flow within the filtered period.
+  // catchUpBalance (which projects patterns forward from a statement date) is not meaningful
+  // for a filtered window, so we skip it and compute balance purely from filtered transactions.
+  let currentBalance: number;
+  let statementClosingBalance: number;
+  let lastStatementDate: string;
+  let balanceIsEstimated: boolean;
+  let balanceCatchUpDays: number;
+
+  const latestDoc = docs[docs.length - 1];
+  const latestStmt = latestDoc.statement_data as unknown as StatementData;
+
+  if (dateFilterActive) {
+    // Balance = net sum of all filtered transactions
+    currentBalance = workingTransactions.reduce(
+      (sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount),
+      0
+    );
+    statementClosingBalance = currentBalance;
+    balanceIsEstimated = false;
+    balanceCatchUpDays = 0;
+    // Use the latest transaction date in the filtered set as reference
+    lastStatementDate = workingTransactions.length > 0
+      ? workingTransactions.reduce((latest, t) => t.date > latest ? t.date : latest, workingTransactions[0].date)
+      : dateTo ?? new Date().toISOString().split("T")[0];
+  } else {
+    // Original logic: catch up from last statement to today
+    lastStatementDate = latestStmt?.accountInfo?.statementPeriod?.to
+      ?? latestStmt?.transactions?.[latestStmt.transactions.length - 1]?.date
+      ?? docs[docs.length - 1].uploaded_at?.slice(0, 10)
+      ?? new Date().toISOString().split("T")[0];
+    statementClosingBalance = latestStmt?.accountInfo?.closingBalance
+      ?? workingTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
+    const catchUp = catchUpBalance(patterns, statementClosingBalance, lastStatementDate);
+    currentBalance = catchUp.isEstimated ? catchUp.estimatedBalance : statementClosingBalance;
+    balanceIsEstimated = catchUp.isEstimated;
+    balanceCatchUpDays = catchUp.daysProjected;
+  }
+
+  // ── Filter patterns, suspicious items, vendors to date range when filter is active ──
+  let displayPatterns = patterns;
+  let displaySuspicious = allSuspicious;
+  let displayNewVendors = newVendors;
+  let displayRecurringVendors = learningReport.recurringCandidates;
+  let displaySuspiciousVendors = learningReport.suspiciousCandidates;
+  let displayOneOffCandidates = learningReport.oneOffCandidates;
+  let displayCrossMonthInsights = learningReport.crossMonthInsights;
+  let displayTotalVendors = learningReport.totalVendors;
+
+  if (dateFilterActive) {
+    // Filter patterns: keep only those with at least one occurrence in the date range
+    const patternOccurrenceInRange = (occurrences: { date: string; amount: number }[]): boolean =>
+      occurrences.some((o) => {
+        if (dateFrom && o.date < dateFrom) return false;
+        if (dateTo && o.date > dateTo) return false;
+        return true;
+      });
+
+    displayPatterns = {
+      ...patterns,
+      recurringExpenses: patterns.recurringExpenses.filter(
+        (p) => patternOccurrenceInRange(p.occurrences)
+      ),
+      recurringIncome: patterns.recurringIncome.filter(
+        (p) => patternOccurrenceInRange(p.occurrences)
+      ),
+    };
+
+    // Filter suspicious: keep only those whose transaction date falls in the range
+    displaySuspicious = allSuspicious.filter((s) => {
+      if (dateFrom && s.transaction.date < dateFrom) return false;
+      if (dateTo && s.transaction.date > dateTo) return false;
+      return true;
+    });
+
+    // Filter new vendors: keep only those whose merchant name appears in filtered transactions
+    displayNewVendors = newVendors.filter((v) => {
+      const key = v.merchantNormalized.toLowerCase();
+      return filteredCoreKeys.has(key);
+    });
+
+    // Filter vendor learning: keep only vendors that appear in filtered transactions
+    displayRecurringVendors = learningReport.recurringCandidates.filter((v) =>
+      filteredCoreKeys.has(v.canonicalName.toLowerCase())
+    );
+    displaySuspiciousVendors = learningReport.suspiciousCandidates.filter((v) =>
+      filteredCoreKeys.has(v.canonicalName.toLowerCase())
+    );
+    displayOneOffCandidates = learningReport.oneOffCandidates.filter((v) =>
+      filteredCoreKeys.has(v.toLowerCase())
+    );
+    displayTotalVendors = displayRecurringVendors.length + displaySuspiciousVendors.length + displayOneOffCandidates.length;
+
+    // Filter cross-month insights: keep only those mentioning vendors in the filtered range
+    displayCrossMonthInsights = learningReport.crossMonthInsights.filter((insight) =>
+      filteredCoreKeys.has(insight.vendor.toLowerCase())
+    );
+  }
+
+  // Generate forecast using filtered patterns when date filter is active
+  const forecast = generateForecast(displayPatterns, currentBalance);
 
   // ── Monthly grouping ──
   const byMonth = new Map<string, Transaction[]>();
@@ -270,6 +379,7 @@ export async function GET(req: NextRequest) {
       totalExpenses: expenses,
       netFlow: income - expenses,
       transactionCount: txs.length,
+      status: monthStatus(income, expenses),
     });
   }
   monthlySummaries.sort((a, b) => b.month.localeCompare(a.month));
@@ -308,7 +418,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.total - a.total);
 
   // ── Vendor Learning Summaries ──
-  const recurringVendors = learningReport.recurringCandidates.map((v) => {
+  const recurringVendors = displayRecurringVendors.map((v) => {
     let confidence = 0.4;
     if (v.appearanceCount >= 3) confidence += 0.2;
     if (v.months.length >= 2) confidence += 0.1;
@@ -331,7 +441,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const suspiciousVendors = learningReport.suspiciousCandidates.map((v) => ({
+  const suspiciousVendors = displaySuspiciousVendors.map((v) => ({
     canonicalName: v.canonicalName,
     subcategory: v.subcategory,
     typicalAmount: v.typicalAmount,
@@ -373,11 +483,12 @@ export async function GET(req: NextRequest) {
     },
 
     // Current balance + forecast
-    currentBalance: effectiveBalance,
+    currentBalance,
     statementClosingBalance,
-    balanceIsEstimated: catchUp.isEstimated,
-    balanceCatchUpDays: catchUp.daysProjected,
+    balanceIsEstimated,
+    balanceCatchUpDays,
     lastStatementDate,
+    dateFilterActive,
     forecast: {
       currentBalance: forecast.currentBalance,
       predictedMonthEnd: forecast.predictedMonthEnd,
@@ -401,7 +512,7 @@ export async function GET(req: NextRequest) {
 
     // Patterns
     patterns: {
-      recurringExpenses: patterns.recurringExpenses.map((p) => ({
+      recurringExpenses: displayPatterns.recurringExpenses.map((p) => ({
         merchant: (p as any).merchant,
         subcategory: (p as any).subcategory ?? "one-off",
         typicalAmount: p.typicalAmount,
@@ -411,7 +522,7 @@ export async function GET(req: NextRequest) {
         occurrences: p.occurrences.length,
         aiReasoning: (p as any).aiReasoning ?? "",
       })),
-      recurringIncome: patterns.recurringIncome.map((p) => ({
+      recurringIncome: displayPatterns.recurringIncome.map((p) => ({
         merchant: (p as any).merchant,
         subcategory: (p as any).subcategory ?? "salary",
         typicalAmount: p.typicalAmount,
@@ -421,12 +532,12 @@ export async function GET(req: NextRequest) {
         occurrences: p.occurrences.length,
         aiReasoning: (p as any).aiReasoning ?? "",
       })),
-      oneOffExpenses: patterns.oneOffExpenses.length,
-      oneOffIncome: patterns.oneOffIncome.length,
+      oneOffExpenses: displayPatterns.oneOffExpenses.length,
+      oneOffIncome: displayPatterns.oneOffIncome.length,
     },
 
     // New vendors discovered by AI (with reasoning)
-    newVendors: newVendors.map((v) => ({
+    newVendors: displayNewVendors.map((v) => ({
       merchantRaw: v.merchantRaw,
       merchantNormalized: v.merchantNormalized,
       subcategory: v.subcategory,
@@ -436,14 +547,14 @@ export async function GET(req: NextRequest) {
 
     // Vendor learning
     vendors: {
-      total: learningReport.totalVendors,
+      total: displayTotalVendors,
       recurring: recurringVendors,
       suspicious: suspiciousVendors,
-      oneOff: learningReport.oneOffCandidates,
+      oneOff: displayOneOffCandidates,
     },
 
     // Cross-month insights
-    crossMonthInsights: learningReport.crossMonthInsights,
+    crossMonthInsights: displayCrossMonthInsights,
 
     // Entity extraction (properties + people)
     entities: {
@@ -465,7 +576,7 @@ export async function GET(req: NextRequest) {
     },
 
     // Suspicious transactions
-    suspicious: suspicious.map((s) => ({
+    suspicious: displaySuspicious.map((s) => ({
       merchant: s.merchant,
       reason: s.reason,
       riskLevel: s.riskLevel,

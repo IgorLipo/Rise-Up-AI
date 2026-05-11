@@ -10,12 +10,20 @@ interface MonthlySummary {
   totalExpenses: number;
   netFlow: number;
   transactionCount: number;
+  status: "safe" | "watch" | "risk" | "critical";
 }
 
 interface Props {
   monthly: MonthlySummary[];
   onSelectMonth?: (month: string) => void;
 }
+
+const STATUS_COLORS: Record<MonthlySummary["status"], { dot: string; label: string }> = {
+  safe: { dot: "bg-emerald-500", label: "Safe" },
+  watch: { dot: "bg-amber-400", label: "Watch" },
+  risk: { dot: "bg-orange-500", label: "Risk" },
+  critical: { dot: "bg-red-500", label: "Critical" },
+};
 
 export function MonthlySummaries({ monthly, onSelectMonth }: Props) {
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
@@ -33,6 +41,7 @@ export function MonthlySummaries({ monthly, onSelectMonth }: Props) {
       <div className="space-y-2">
         {monthly.map((m) => {
           const isExpanded = expandedMonth === m.month;
+          const statusStyle = STATUS_COLORS[m.status];
           return (
             <div
               key={m.month}
@@ -45,9 +54,16 @@ export function MonthlySummaries({ monthly, onSelectMonth }: Props) {
                 }}
                 className="w-full p-4 text-left hover:bg-zinc-50 transition-colors flex items-center justify-between"
               >
-                <div>
-                  <div className="text-sm font-semibold text-zinc-900">{m.label}</div>
-                  <div className="text-xs text-zinc-400 mt-0.5">{m.transactionCount} transactions</div>
+                <div className="flex items-center gap-3">
+                  {/* Status indicator dot */}
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${statusStyle.dot}`}
+                    title={statusStyle.label}
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-zinc-900">{m.label}</div>
+                    <div className="text-xs text-zinc-400 mt-0.5">{m.transactionCount} transactions</div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right">
