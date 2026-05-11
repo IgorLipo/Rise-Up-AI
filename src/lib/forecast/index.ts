@@ -37,6 +37,23 @@ function computeAverageGap(occurrences: { date: string; amount: number }[]): num
   return Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
 }
 
+function getDayOfMonth(date: string): number {
+  return new Date(date).getDate();
+}
+
+function computeAverageDayOfMonth(occurrences: { date: string; amount: number }[]): number {
+  const days = occurrences.map(o => getDayOfMonth(o.date));
+  return Math.round(days.reduce((s, d) => s + d, 0) / days.length);
+}
+
+function hasAlreadyOccurredThisMonth(
+  occurrences: { date: string; amount: number }[],
+  today: string
+): boolean {
+  const currentMonth = today.slice(0, 7);
+  return occurrences.some(o => o.date.slice(0, 7) === currentMonth);
+}
+
 export interface CatchUpResult {
   estimatedBalance: number;
   lastKnownBalance: number;
@@ -49,8 +66,9 @@ const MAX_CATCHUP_DAYS = 30;
 
 export function catchUpBalance(
   patterns: EnrichedDetectedPatterns,
-  lastKnownBalance: number,
-  lastKnownDate: string,
+  lastKnownBalance: number,       // MUST be authoritative closingBalance from latest statement
+  lastKnownDate: string,          // MUST be latest statement period_to
+  statementPeriodEnd: string,     // the period_to date — don't project transactions before this
   today?: string
 ): CatchUpResult {
   const todayStr = today ?? new Date().toISOString().split("T")[0];
@@ -67,7 +85,7 @@ export function catchUpBalance(
 
   const daysSince = daysBetween(lastKnownDate, todayStr);
 
-  // If last statement is too old to project reliably, use last known balance as-is
+  // If last statement is too old to project reliably, don't estimate
   if (daysSince > MAX_CATCHUP_DAYS) {
     return {
       estimatedBalance: lastKnownBalance,
@@ -83,21 +101,73 @@ export function catchUpBalance(
 
   for (const payment of patterns.recurringExpenses) {
     if (payment.occurrences.length < 2) continue;
-    const gap = computeAverageGap(payment.occurrences);
-    let nextDate = addDays(payment.lastOccurrence, gap);
+    if (hasAlreadyOccurredThisMonth(payment.occurrences, todayStr)) continue;
+
+    const avgDayOfMonth = computeAverageDayOfMonth(payment.occurrences);
+    let nextDate: string;
+
+    if (payment.interval === "monthly" || payment.interval === "28-day") {
+      // Day-of-month anchored projection for monthly patterns
+      const todayDate = new Date(todayStr);
+      const nextMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), avgDayOfMonth);
+      if (nextMonth <= todayDate) {
+        nextMonth.setMonth(nextMonth.getMonth() + 1);
+      }
+      nextDate = formatDate(nextMonth);
+    } else {
+      // Average-gap projection for non-monthly patterns
+      const gap = computeAverageGap(payment.occurrences);
+      nextDate = addDays(payment.lastOccurrence, gap);
+    }
+
+    // Only project if nextExpected > statementPeriodEnd (avoid double-count)
     while (nextDate <= horizon && nextDate <= todayStr) {
-      balance -= payment.typicalAmount;
-      nextDate = addDays(nextDate, gap);
+      if (nextDate > statementPeriodEnd) {
+        balance -= payment.typicalAmount;
+      }
+      // Advance based on interval type
+      if (payment.interval === "monthly" || payment.interval === "28-day") {
+        const nd = new Date(nextDate);
+        nd.setMonth(nd.getMonth() + 1);
+        nextDate = formatDate(nd);
+      } else {
+        const gap = computeAverageGap(payment.occurrences);
+        nextDate = addDays(nextDate, gap);
+      }
     }
   }
 
   for (const income of patterns.recurringIncome) {
     if (income.occurrences.length < 2) continue;
-    const gap = computeAverageGap(income.occurrences);
-    let nextDate = addDays(income.lastOccurrence, gap);
+    if (hasAlreadyOccurredThisMonth(income.occurrences, todayStr)) continue;
+
+    const avgDayOfMonth = computeAverageDayOfMonth(income.occurrences);
+    let nextDate: string;
+
+    if (income.interval === "monthly" || income.interval === "28-day") {
+      const todayDate = new Date(todayStr);
+      const nextMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), avgDayOfMonth);
+      if (nextMonth <= todayDate) {
+        nextMonth.setMonth(nextMonth.getMonth() + 1);
+      }
+      nextDate = formatDate(nextMonth);
+    } else {
+      const gap = computeAverageGap(income.occurrences);
+      nextDate = addDays(income.lastOccurrence, gap);
+    }
+
     while (nextDate <= horizon && nextDate <= todayStr) {
-      balance += income.typicalAmount;
-      nextDate = addDays(nextDate, gap);
+      if (nextDate > statementPeriodEnd) {
+        balance += income.typicalAmount;
+      }
+      if (income.interval === "monthly" || income.interval === "28-day") {
+        const nd = new Date(nextDate);
+        nd.setMonth(nd.getMonth() + 1);
+        nextDate = formatDate(nd);
+      } else {
+        const gap = computeAverageGap(income.occurrences);
+        nextDate = addDays(nextDate, gap);
+      }
     }
   }
 
@@ -108,6 +178,10 @@ export function catchUpBalance(
     daysProjected: daysSince,
     isEstimated: true,
   };
+}
+
+function formatDate(d: Date): string {
+  return d.toISOString().split("T")[0];
 }
 
 export function generateForecast(
