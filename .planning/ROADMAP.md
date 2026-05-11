@@ -51,7 +51,7 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
   4. User sees individual month cards showing month name, statement period, opening/closing balance, income/expenses, net movement, transaction count, top sources, unusual items, and forecast accuracy
   5. User sees a prominent risk status display (Safe/Watch/Risk/Critical) with clear criteria, key drivers showing biggest expected income/expenses, and specific recommended actions
 **Plans**: 3 plans (3 waves)
-- [ ] 02-01-PLAN.md — Tab framework + status display (TabNavigation, page restructure, StatusBadge with criteria, KeyDrivers)
+- [x] 02-01-PLAN.md — Tab framework + status display (TabNavigation, page restructure, StatusBadge with criteria, KeyDrivers)
 - [x] 02-02-PLAN.md — Forecast + History + Intelligence tabs (grouped daily forecast, rich month cards, interactive insight detail panel)
 - [ ] 02-03-PLAN.md — Review Queue + Transactions + Assembly (actionable review items, RecommendedActions, final page.tsx wiring)
 **UI hint**: yes
