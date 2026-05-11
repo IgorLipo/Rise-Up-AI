@@ -262,8 +262,19 @@ export async function GET(req: NextRequest) {
   let balanceIsEstimated: boolean;
   let balanceCatchUpDays: number;
 
-  const latestDoc = docs[docs.length - 1];
-  const latestStmt = latestDoc.statement_data as unknown as StatementData;
+  // Find the document with the most recent statement period end date
+  let latestDoc = docs[0];
+  let latestStmt = latestDoc.statement_data as unknown as StatementData;
+  let latestPeriodTo = latestStmt?.accountInfo?.statementPeriod?.to ?? "";
+  for (const doc of docs) {
+    const stmt = doc.statement_data as unknown as StatementData;
+    const periodTo = stmt?.accountInfo?.statementPeriod?.to ?? "";
+    if (periodTo > latestPeriodTo) {
+      latestPeriodTo = periodTo;
+      latestDoc = doc;
+      latestStmt = stmt;
+    }
+  }
 
   if (dateFilterActive) {
     // Balance = net sum of all filtered transactions
