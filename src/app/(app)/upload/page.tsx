@@ -61,19 +61,11 @@ export default function UploadPage() {
   useEffect(() => {
     if (!allDone || doneCount === 0) return;
     let cancelled = false;
-    fetch("/api/documents/aggregate")
+    fetch("/api/pipeline/recalculate", { method: "POST" })
       .then(r => r.json())
       .then(json => {
-        if (cancelled) return;
-        setPipelineSummary({
-          importedPeriod: null, // aggregate doesn't return per-file periods
-          latestBalance: json.currentPosition?.balance ?? null,
-          transactionCount: json.totalTransactions ?? 0,
-          newVendors: json.newVendors?.map((v: any) => v.merchantNormalized) ?? [],
-          updatedPatterns: (json.patterns?.recurringExpenses?.length ?? 0) + (json.patterns?.recurringIncome?.length ?? 0),
-          potentialPersonalExpenses: json.suspicious?.length ?? 0,
-          forecastUpdated: json.forecast != null,
-        });
+        if (cancelled || !json.success) return;
+        setPipelineSummary(json.summary);
       })
       .catch(() => {});
     return () => { cancelled = true; };

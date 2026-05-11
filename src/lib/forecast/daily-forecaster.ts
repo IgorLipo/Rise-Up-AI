@@ -128,7 +128,9 @@ export function generateDailyForecast(
 
     const riskFlag = closing < totalExpectedExpenses * 0.2;
     const riskMessage = riskFlag
-      ? `Balance drops below 20% of expected monthly expenses`
+      ? (dayTxs.length > 0
+        ? `Low balance — ${dayTxs.map(t => t.merchant).slice(0, 2).join(", ")} expected`
+        : "Balance drops below safety threshold")
       : undefined;
 
     days.push({
