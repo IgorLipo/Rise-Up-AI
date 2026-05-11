@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BottomTabBar } from "@/components/nav/bottom-tab-bar";
 import { FloatingBack } from "@/components/nav/floating-back";
 import { CompanySelector } from "@/components/nav/company-selector";
+import { LogoutButton } from "@/components/nav/logout-button";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -33,7 +34,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               ))}
             </div>
           </div>
-          <CompanySelector />
+          <div className="flex items-center gap-2">
+            <CompanySelector />
+            <LogoutButton />
+          </div>
         </div>
       </nav>
       <FloatingBack />
