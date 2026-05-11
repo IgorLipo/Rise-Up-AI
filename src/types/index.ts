@@ -236,5 +236,5 @@ export type Subcategory =
   | "rent" | "taxes" | "loans" | "supplier-payments"
   | "utilities" | "bank-fees" | "insurance" | "marketing"
   | "travel" | "office-supplies" | "professional-services"
-  | "supplies" | "director-loans" | "property-management"
+  | "supplies" | "director-loans" | "property-management" | "property-income"
   | "one-off";
