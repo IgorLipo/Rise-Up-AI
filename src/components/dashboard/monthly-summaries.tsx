@@ -13,6 +13,22 @@ interface MonthlySummary {
   status: "safe" | "watch" | "risk" | "critical";
 }
 
+export interface MonthCardData {
+  month: string;
+  label: string;
+  totalIncome: number;
+  totalExpenses: number;
+  netFlow: number;
+  transactionCount: number;
+  status: "safe" | "watch" | "risk" | "critical";
+  statementPeriod?: { from: string; to: string };
+  openingBalance?: number;
+  closingBalance?: number;
+  topCategories?: Array<{ category: string; total: number }>;
+  unusualItems?: Array<{ description: string; amount: number }>;
+  forecastAccuracy?: number;
+}
+
 interface Props {
   monthly: MonthlySummary[];
   onSelectMonth?: (month: string) => void;
@@ -113,6 +129,127 @@ export function MonthlySummaries({ monthly, onSelectMonth }: Props) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function MetricTile({ label, value, positive, negative }: {
+  label: string; value: number; positive?: boolean; negative?: boolean;
+}) {
+  return (
+    <div className="bg-zinc-50 rounded-lg p-2.5">
+      <div className="text-[10px] text-zinc-400 uppercase tracking-wider">{label}</div>
+      <div className={`text-sm font-mono font-medium mt-0.5 ${
+        positive ? "text-emerald-600" : negative ? "text-red-500" : "text-zinc-900"
+      }`}>
+        {formatCurrency(value)}
+      </div>
+    </div>
+  );
+}
+
+export function MonthCard({ data, onViewTransactions }: {
+  data: MonthCardData;
+  onViewTransactions?: (month: string) => void;
+}) {
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-zinc-100">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900">{data.label}</h3>
+            {data.statementPeriod && (
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {data.statementPeriod.from.slice(0, 10)} to {data.statementPeriod.to.slice(0, 10)}
+              </p>
+            )}
+          </div>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+            data.status === "safe" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+            data.status === "watch" ? "bg-amber-50 text-amber-700 border-amber-200" :
+            data.status === "risk" ? "bg-red-50 text-red-700 border-red-200" :
+            "bg-red-100 text-red-800 border-red-300"
+          }`}>
+            {data.status.charAt(0).toUpperCase() + data.status.slice(1)}
+          </span>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-4 space-y-3">
+        {/* Balances (if available) */}
+        {data.openingBalance !== undefined && data.closingBalance !== undefined && (
+          <div className="grid grid-cols-2 gap-2">
+            <MetricTile label="Opening" value={data.openingBalance} />
+            <MetricTile label="Closing" value={data.closingBalance} />
+          </div>
+        )}
+
+        {/* Income / Expenses */}
+        <div className="grid grid-cols-2 gap-2">
+          <MetricTile label="Income" value={data.totalIncome} positive />
+          <MetricTile label="Expenses" value={data.totalExpenses} negative />
+        </div>
+
+        {/* Net movement */}
+        <div className="flex items-center justify-between bg-zinc-50 rounded-lg px-3 py-2">
+          <span className="text-xs text-zinc-500">Net movement</span>
+          <span className={`text-sm font-mono font-semibold ${data.netFlow >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+            {data.netFlow >= 0 ? "+" : ""}{formatCurrency(data.netFlow)}
+          </span>
+        </div>
+
+        {/* Transaction count */}
+        <div className="flex items-center justify-between bg-zinc-50 rounded-lg px-3 py-2">
+          <span className="text-xs text-zinc-500">Transactions</span>
+          <span className="text-sm font-medium text-zinc-900">{data.transactionCount}</span>
+        </div>
+
+        {/* Top categories */}
+        {data.topCategories && data.topCategories.length > 0 && (
+          <div>
+            <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1.5">Top categories</div>
+            <div className="space-y-1">
+              {data.topCategories.slice(0, 3).map((cat) => (
+                <div key={cat.category} className="flex justify-between text-xs">
+                  <span className="text-zinc-600 capitalize">{cat.category.replace(/-/g, " ")}</span>
+                  <span className="font-mono text-zinc-500">{formatCurrency(cat.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Unusual items */}
+        {data.unusualItems && data.unusualItems.length > 0 && (
+          <div>
+            <div className="text-[10px] text-amber-600 uppercase tracking-wider font-medium mb-1">Unusual activity</div>
+            {data.unusualItems.map((item, i) => (
+              <div key={i} className="text-xs text-zinc-600 flex justify-between">
+                <span className="truncate mr-2">{item.description}</span>
+                <span className="font-mono text-red-500 flex-shrink-0">-{formatCurrency(item.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Forecast accuracy */}
+        {data.forecastAccuracy !== undefined && (
+          <div className="flex items-center justify-between bg-zinc-50 rounded-lg px-3 py-2">
+            <span className="text-xs text-zinc-500">Forecast accuracy</span>
+            <span className="text-xs font-medium text-zinc-700">{Math.round(data.forecastAccuracy * 100)}%</span>
+          </div>
+        )}
+
+        {/* View transactions */}
+        <button
+          onClick={() => onViewTransactions?.(data.month)}
+          className="w-full px-3 py-2 rounded-lg border border-zinc-200 text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
+        >
+          View transactions
+        </button>
       </div>
     </div>
   );
