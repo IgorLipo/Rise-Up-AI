@@ -18,12 +18,18 @@ interface AggregateResponse {
   hasData: boolean;
   totalDocuments: number;
   totalTransactions: number;
-  currentBalance: number;
-  statementClosingBalance?: number;
-  balanceIsEstimated?: boolean;
-  balanceCatchUpDays?: number;
-  lastStatementDate?: string;
-  dateFilterActive?: boolean;
+  currentPosition: {
+    balance: number | null;
+    date: string | null;
+    source: "statement" | "catchUp" | "unavailable";
+    isEstimated: boolean;
+    isStale: boolean;
+    statementPeriodEnd: string | null;
+  };
+  balanceValidation: {
+    valid: boolean;
+    message: string;
+  } | null;
   accumulated: {
     totalIncome: number;
     totalExpenses: number;
@@ -32,7 +38,7 @@ interface AggregateResponse {
     totalTransactions: number;
     dateRange: { from: string; to: string } | null;
   };
-  forecast: MonthEndForecast;
+  forecast: MonthEndForecast | null;
   monthly: Array<{
     month: string;
     label: string;
@@ -209,7 +215,7 @@ export default function DashboardPage() {
   if (error) return <EmptyDashboard />;
   if (!data || !data.hasData) return <EmptyDashboard />;
 
-  const { forecast, accumulated, monthly, categories, vendors, crossMonthInsights, suspicious } = data;
+  const { currentPosition, forecast, accumulated, monthly, categories, vendors, crossMonthInsights, suspicious } = data;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
@@ -236,34 +242,39 @@ export default function DashboardPage() {
 
       {/* Cash position + status */}
       <AccumulatedStats
-        currentBalance={data.currentBalance}
-        predictedMonthEnd={forecast.predictedMonthEnd}
-        remainingIncome={forecast.remainingIncome}
-        remainingExpenses={forecast.remainingExpenses}
-        status={forecast.status}
-        confidence={forecast.confidence}
+        currentBalance={currentPosition.balance ?? 0}
+        predictedMonthEnd={forecast?.predictedMonthEnd ?? 0}
+        remainingIncome={forecast?.remainingIncome ?? 0}
+        remainingExpenses={forecast?.remainingExpenses ?? 0}
+        status={forecast?.status ?? "safe"}
+        confidence={forecast?.confidence ?? 0}
         netFlow={accumulated.netFlow}
         totalDocuments={data.totalDocuments}
         totalTransactions={data.totalTransactions}
-        balanceIsEstimated={data.balanceIsEstimated}
-        balanceCatchUpDays={data.balanceCatchUpDays}
-        statementClosingBalance={data.statementClosingBalance}
-        dateFilterActive={data.dateFilterActive}
+        balanceIsEstimated={currentPosition.isEstimated}
+        balanceCatchUpDays={0}
+        statementClosingBalance={currentPosition.balance ?? undefined}
+        dateFilterActive={false}
+        balanceSource={currentPosition.source}
+        isStale={currentPosition.isStale}
+        statementPeriodEnd={currentPosition.statementPeriodEnd ?? undefined}
       />
 
       {/* Insight hero */}
-      <InsightHeroCard
-        headline={forecast.statusReason}
-        summary={buildInsightSummary(forecast, categories)}
-        severity={
-          forecast.status === "safe" ? "info"
-            : forecast.status === "watch" ? "warning"
-            : "critical"
-        }
-      />
+      {forecast && (
+        <InsightHeroCard
+          headline={forecast.statusReason}
+          summary={buildInsightSummary(forecast, categories)}
+          severity={
+            forecast.status === "safe" ? "info"
+              : forecast.status === "watch" ? "warning"
+              : "critical"
+          }
+        />
+      )}
 
       {/* Daily forecast chart */}
-      {forecast.dailyForecast.length > 0 && (
+      {forecast && forecast.dailyForecast.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider mb-3">
             Daily forecast

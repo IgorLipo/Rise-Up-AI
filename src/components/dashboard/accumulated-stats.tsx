@@ -18,6 +18,9 @@ interface Props {
   balanceCatchUpDays?: number;
   statementClosingBalance?: number;
   dateFilterActive?: boolean;
+  balanceSource?: "statement" | "catchUp" | "unavailable";
+  isStale?: boolean;
+  statementPeriodEnd?: string;
 }
 
 export function AccumulatedStats({
@@ -34,16 +37,25 @@ export function AccumulatedStats({
   balanceCatchUpDays,
   statementClosingBalance,
   dateFilterActive,
+  balanceSource,
+  isStale,
+  statementPeriodEnd,
 }: Props) {
   // Determine the balance subtitle based on context
   let balanceSubtitle: string;
-  if (dateFilterActive) {
+  if (balanceSource === "unavailable") {
+    balanceSubtitle = "Upload a statement to see balance";
+  } else if (isStale) {
+    balanceSubtitle = `Last statement ended ${statementPeriodEnd ?? "unknown"}`;
+  } else if (dateFilterActive) {
     balanceSubtitle = "Filtered period net";
   } else if (balanceIsEstimated) {
     balanceSubtitle = `Estimated (${balanceCatchUpDays}d projection)`;
   } else {
     balanceSubtitle = "Latest statement";
   }
+
+  const showBalanceUnavailable = balanceSource === "unavailable";
 
   return (
     <div className="space-y-4">
@@ -53,7 +65,7 @@ export function AccumulatedStats({
             Current balance
           </div>
           <div className="text-2xl font-bold text-zinc-900 tabular-nums">
-            {formatCurrency(currentBalance)}
+            {showBalanceUnavailable ? "—" : formatCurrency(currentBalance)}
           </div>
           <div className="text-xs text-zinc-400 mt-1">
             {balanceSubtitle}
@@ -61,6 +73,11 @@ export function AccumulatedStats({
           {balanceIsEstimated && statementClosingBalance !== undefined && (
             <div className="text-[10px] text-amber-600 mt-1">
               Last known: {formatCurrency(statementClosingBalance)}
+            </div>
+          )}
+          {isStale && (
+            <div className="text-[10px] text-amber-600 mt-1">
+              Balance may be stale — upload a newer statement
             </div>
           )}
         </div>
@@ -122,7 +139,7 @@ export function AccumulatedStats({
         </div>
         <div className="bg-white border border-zinc-200 rounded-xl p-3 text-center">
           <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium">
-            Net flow
+            All-Time Net Flow
           </div>
           <div className={`text-lg font-bold tabular-nums mt-0.5 ${
             netFlow >= 0 ? "text-emerald-700" : "text-red-600"

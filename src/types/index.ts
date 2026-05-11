@@ -238,3 +238,26 @@ export type Subcategory =
   | "travel" | "office-supplies" | "professional-services"
   | "supplies" | "director-loans" | "property-management" | "property-income"
   | "one-off";
+
+export interface CurrentPosition {
+  balance: number | null;
+  date: string | null;
+  source: "statement" | "catchUp" | "unavailable";
+  isEstimated: boolean;
+  isStale: boolean;
+  statementPeriodEnd: string | null;
+}
+
+export interface AccumulatedPerformance {
+  totalIncome: number;
+  totalExpenses: number;
+  netFlow: number;
+  statementCount: number;
+  totalTransactions: number;
+  dateRange: { from: string; to: string } | null;
+}
+
+export interface BalanceValidationResult {
+  valid: boolean;
+  message: string;
+}
