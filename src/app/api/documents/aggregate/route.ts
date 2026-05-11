@@ -196,7 +196,15 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Suspicious Detection (always uses all transactions) ──
-  const allSuspicious = detectAllSuspicious(allTransactions);
+  // Build known business vendors to skip personal detection for business transactions
+  const knownBusinessVendors = new Set<string>();
+  for (const vendor of learningReport.recurringCandidates) {
+    const bizCategories = ["rent", "property-management", "property-income", "taxes", "supplier-payments", "utilities", "software", "professional-services"];
+    if (bizCategories.includes(vendor.subcategory)) {
+      knownBusinessVendors.add(vendor.canonicalName.toLowerCase());
+    }
+  }
+  const allSuspicious = detectAllSuspicious(allTransactions, knownBusinessVendors);
 
   // ── Pattern Detection (with known vendors + DB intel) ──
   // Build known vendor map from cross-month learning

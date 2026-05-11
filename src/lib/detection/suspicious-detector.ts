@@ -108,13 +108,27 @@ function detectDuplicateSubscriptions(
 
 export function detectSuspicious(
   transaction: Transaction,
-  allTransactions: Transaction[] = []
+  allTransactions: Transaction[] = [],
+  knownBusinessVendors?: Set<string>  // vendors known to be business-related
 ): SuspiciousTransaction | null {
   const desc = transaction.description;
   const core = coreMerchant(normalizeMerchant(desc)).toLowerCase();
 
-  // Check personal patterns
+  // GATE 1: Credits (income) are never personal expenses
+  if (transaction.type === "credit") return null;
+
+  // GATE 2: Known business vendors skip detection
+  if (knownBusinessVendors?.has(core)) return null;
+
+  // GATE 3: Large transactions skip small-purchase patterns
+  const isSmallAmount = transaction.amount < 200;
+
+  // Check personal patterns — only for debits, only if not known business
   for (const { pattern, reason } of PERSONAL_PATTERNS) {
+    // Skip small-purchase patterns for large transactions
+    const isSmallPurchasePattern = /fast food|coffee|meal|snack/i.test(reason);
+    if (isSmallPurchasePattern && !isSmallAmount) continue;
+
     if (pattern.test(desc) || pattern.test(core)) {
       return {
         transaction,
@@ -180,9 +194,10 @@ export function detectSuspicious(
 
 // Batch detection across all transactions
 export function detectAllSuspicious(
-  transactions: Transaction[]
+  transactions: Transaction[],
+  knownBusinessVendors?: Set<string>
 ): SuspiciousTransaction[] {
   return transactions
-    .map((tx) => detectSuspicious(tx, transactions))
+    .map((tx) => detectSuspicious(tx, transactions, knownBusinessVendors))
     .filter((s): s is SuspiciousTransaction => s !== null);
 }
