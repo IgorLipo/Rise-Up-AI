@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { detectAllAsync } from "@/lib/detection";
-import { generateForecast, catchUpBalance } from "@/lib/forecast";
+import { generateForecast } from "@/lib/forecast";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { upsertVendorIntelBatch, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
 import { extractEntities, entityAttributesForVendor } from "@/lib/detection/entity-extractor";
 import type { AIClassification } from "@/lib/detection/ai-classifier";
+import { validateStatementBalance } from "@/lib/financial/math";
 import type { Transaction, StatementData } from "@/types";
 
 interface StatementSummary {
@@ -252,15 +253,9 @@ export async function GET(req: NextRequest) {
     filteredCoreKeys.add(tx.description.toLowerCase().trim());
   }
 
-  // ── Balance + Forecast ──
-  // When a date filter is active, the balance is the net flow within the filtered period.
-  // catchUpBalance (which projects patterns forward from a statement date) is not meaningful
-  // for a filtered window, so we skip it and compute balance purely from filtered transactions.
-  let currentBalance: number;
-  let statementClosingBalance: number;
-  let lastStatementDate: string;
-  let balanceIsEstimated: boolean;
-  let balanceCatchUpDays: number;
+  // ── Balance ──
+  // currentPosition = authoritative bank balance from latest statement only.
+  // accumulated = computed net flow across all statements (shown separately).
 
   // Find the document with the most recent statement period end date
   let latestDoc = docs[0];
@@ -276,32 +271,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (dateFilterActive) {
-    // Balance = net sum of all filtered transactions
-    currentBalance = workingTransactions.reduce(
-      (sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount),
-      0
-    );
-    statementClosingBalance = currentBalance;
-    balanceIsEstimated = false;
-    balanceCatchUpDays = 0;
-    // Use the latest transaction date in the filtered set as reference
-    lastStatementDate = workingTransactions.length > 0
-      ? workingTransactions.reduce((latest, t) => t.date > latest ? t.date : latest, workingTransactions[0].date)
-      : dateTo ?? new Date().toISOString().split("T")[0];
-  } else {
-    // Original logic: catch up from last statement to today
-    lastStatementDate = latestStmt?.accountInfo?.statementPeriod?.to
-      ?? latestStmt?.transactions?.[latestStmt.transactions.length - 1]?.date
-      ?? docs[docs.length - 1].uploaded_at?.slice(0, 10)
-      ?? new Date().toISOString().split("T")[0];
-    statementClosingBalance = latestStmt?.accountInfo?.closingBalance
-      ?? workingTransactions.reduce((sum, t) => sum + (t.type === "credit" ? t.amount : -t.amount), 0);
-    const catchUp = catchUpBalance(patterns, statementClosingBalance, lastStatementDate);
-    currentBalance = catchUp.isEstimated ? catchUp.estimatedBalance : statementClosingBalance;
-    balanceIsEstimated = catchUp.isEstimated;
-    balanceCatchUpDays = catchUp.daysProjected;
+  const latestClosingBalance = latestStmt?.accountInfo?.closingBalance;
+  const latestPeriodFrom = latestStmt?.accountInfo?.statementPeriod?.from ?? "";
+
+  // Build current position from bank-verified data only
+  const currentPosition = {
+    balance: latestClosingBalance ?? null as number | null,
+    date: latestPeriodTo || null as string | null,
+    source: latestClosingBalance != null ? "statement" as const : "unavailable" as const,
+    isEstimated: false,
+    isStale: false,
+    statementPeriodEnd: latestPeriodTo || null as string | null,
+  };
+
+  // Balance validation on the latest statement
+  let balanceValidation: { valid: boolean; differencePence: number; message: string } | null = null;
+  if (latestClosingBalance != null && latestStmt?.accountInfo) {
+    const opening = latestStmt.accountInfo.openingBalance ?? 0;
+    const credits = latestStmt.transactions
+      ?.filter((t: { type: string }) => t.type === "credit")
+      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? 0;
+    const debits = latestStmt.transactions
+      ?.filter((t: { type: string }) => t.type === "debit")
+      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? 0;
+    balanceValidation = validateStatementBalance(opening, credits, debits, latestClosingBalance);
   }
+
+  // For forecast start: use bank-verified balance, or null if unavailable
+  const forecastStartingBalance = currentPosition.balance;
 
   // ── Filter patterns, suspicious items, vendors to date range when filter is active ──
   let displayPatterns = patterns;
@@ -364,7 +361,10 @@ export async function GET(req: NextRequest) {
   }
 
   // Generate forecast using filtered patterns when date filter is active
-  const forecast = generateForecast(displayPatterns, currentBalance);
+  // Only generate when we have a bank-verified starting balance
+  const forecast = forecastStartingBalance != null
+    ? generateForecast(displayPatterns, forecastStartingBalance)
+    : null;
 
   // ── Monthly grouping ──
   const byMonth = new Map<string, Transaction[]>();
@@ -478,7 +478,23 @@ export async function GET(req: NextRequest) {
     totalDocuments: docs.length,
     totalTransactions: workingTransactions.length,
 
-    // Accumulated stats
+    // Current position (bank-verified)
+    currentPosition: {
+      balance: currentPosition.balance,
+      date: currentPosition.date,
+      source: currentPosition.source,
+      isEstimated: currentPosition.isEstimated,
+      isStale: currentPosition.isStale,
+      statementPeriodEnd: currentPosition.statementPeriodEnd,
+    },
+
+    // Balance validation
+    balanceValidation: balanceValidation ? {
+      valid: balanceValidation.valid,
+      message: balanceValidation.message,
+    } : null,
+
+    // Accumulated performance (computed — separate from current position)
     accumulated: {
       totalIncome,
       totalExpenses,
@@ -493,27 +509,23 @@ export async function GET(req: NextRequest) {
         : null,
     },
 
-    // Current balance + forecast
-    currentBalance,
-    statementClosingBalance,
-    balanceIsEstimated,
-    balanceCatchUpDays,
-    lastStatementDate,
-    dateFilterActive,
-    forecast: {
-      currentBalance: forecast.currentBalance,
-      predictedMonthEnd: forecast.predictedMonthEnd,
-      remainingIncome: forecast.remainingIncome,
-      remainingExpenses: forecast.remainingExpenses,
-      status: forecast.status,
-      statusReason: forecast.statusReason,
-      confidence: forecast.confidence,
-      dailyForecast: forecast.dailyForecast,
-      nextIncomeDate: forecast.nextIncomeDate,
-      dangerWindow: forecast.dangerWindow,
-      biggestRisks: forecast.biggestRisks,
-      generatedAt: forecast.generatedAt,
-    },
+    // Forecast (only generated when we have a starting balance)
+    forecast: forecast != null
+      ? {
+          currentBalance: forecast.currentBalance,
+          predictedMonthEnd: forecast.predictedMonthEnd,
+          remainingIncome: forecast.remainingIncome,
+          remainingExpenses: forecast.remainingExpenses,
+          status: forecast.status,
+          statusReason: forecast.statusReason,
+          confidence: forecast.confidence,
+          dailyForecast: forecast.dailyForecast,
+          nextIncomeDate: forecast.nextIncomeDate,
+          dangerWindow: forecast.dangerWindow,
+          biggestRisks: forecast.biggestRisks,
+          generatedAt: forecast.generatedAt,
+        }
+      : null,
 
     // Monthly breakdown
     monthly: monthlySummaries,
