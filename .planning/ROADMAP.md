@@ -6,7 +6,7 @@ This roadmap fixes the cashflow forecasting app's core logic (Phase 1) then rest
 
 ## Phases
 
-- [ ] **Phase 1: Backend Logic Fixes** - Correct balance extraction, forecast engine, categorization, suspicious detection, risk messages, and upload recalculation pipeline
+- [x] **Phase 1: Backend Logic Fixes** - Correct balance extraction, forecast engine, categorization, suspicious detection, risk messages, and upload recalculation pipeline (FOR-04 Modes A/C deferred to Phase 1b)
 - [ ] **Phase 2: Dashboard UI & Experience** - Restructure dashboard with tabs, daily forecast readability, month cards, review queue, insight cards, status display, and action recommendations
 
 ## Phase Details
@@ -57,5 +57,5 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Logic Fixes | 0/0 | Not started | - |
+| 1. Backend Logic Fixes | 1/1 | 10/10 tasks complete | 2026-05-11 |
 | 2. Dashboard UI & Experience | 0/0 | Not started | - |
