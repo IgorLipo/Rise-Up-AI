@@ -214,7 +214,11 @@ export function generateForecast(
 
   const { status, reason: statusReason } = calculateStatus(daily, totalMonthlyExpenses, nextIncomeDate);
 
-  const risks = detectRisks(daily);
+  const risks = detectRisks(
+    daily,
+    nextIncomeDate,
+    patterns.recurringIncome.find((i) => i.nextExpected === nextIncomeDate)?.merchant
+  );
 
   // Danger window
   const threshold = totalMonthlyExpenses * 0.2;
