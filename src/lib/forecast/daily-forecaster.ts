@@ -1,5 +1,7 @@
-import type { RecurringPayment } from "@/lib/detection/pattern-detector";
+import type { RecurringPayment, ConfidenceTier } from "@/lib/detection/pattern-detector";
 import type { EnrichedDetectedPatterns } from "@/lib/detection";
+
+export type ForecastItemStatus = "completed" | "expected" | "late" | "uncertain";
 
 export interface ExpectedTransaction {
   merchant: string;
@@ -8,6 +10,8 @@ export interface ExpectedTransaction {
   subcategory: string;
   recurring: boolean;
   confidence: number;
+  confidenceTier: ConfidenceTier;
+  status: ForecastItemStatus;
   recurrence: RecurringPayment | null;
 }
 
@@ -18,8 +22,10 @@ export interface DailyForecast {
   expectedExpenses: number;
   closingBalance: number;
   transactions: ExpectedTransaction[];
+  possibleUpcoming: ExpectedTransaction[];  // MEDIUM confidence
   riskFlag: boolean;
   riskMessage?: string;
+  transactionCount: number;  // total count for this day (for "+X more" display)
 }
 
 function getMonthEnd(date: Date): Date {
@@ -28,6 +34,25 @@ function getMonthEnd(date: Date): Date {
 
 function formatDate(d: Date): string {
   return d.toISOString().split("T")[0];
+}
+
+function hasAlreadyOccurredThisMonth(
+  occurrences: { date: string; amount: number }[],
+  today: string
+): boolean {
+  const currentMonth = today.slice(0, 7);
+  return occurrences.some(o => o.date.slice(0, 7) === currentMonth);
+}
+
+function determineStatus(
+  payment: RecurringPayment,
+  today: string,
+  monthEnd: string
+): ForecastItemStatus {
+  if (hasAlreadyOccurredThisMonth(payment.occurrences, today)) return "completed";
+  if (payment.nextExpected < today) return "late";
+  if (payment.nextExpected <= monthEnd) return "expected";
+  return "uncertain";
 }
 
 export function generateDailyForecast(
@@ -39,47 +64,63 @@ export function generateDailyForecast(
   const startDate = new Date(today);
   const days: DailyForecast[] = [];
 
-  // Build map of expected transactions per day
-  const perDay = new Map<string, ExpectedTransaction[]>();
-  const addToDay = (date: string, tx: ExpectedTransaction) => {
-    if (!perDay.has(date)) perDay.set(date, []);
-    perDay.get(date)!.push(tx);
+  // Build maps of expected transactions per day, separated by tier
+  const perDay = new Map<string, ExpectedTransaction[]>();      // HIGH — main forecast
+  const possiblePerDay = new Map<string, ExpectedTransaction[]>(); // MEDIUM — possible
+
+  const addToDay = (date: string, tx: ExpectedTransaction, isMedium: boolean) => {
+    const map = isMedium ? possiblePerDay : perDay;
+    if (!map.has(date)) map.set(date, []);
+    map.get(date)!.push(tx);
   };
 
+  // Helper to build ExpectedTransaction
+  function buildTx(
+    payment: RecurringPayment,
+    category: string,
+    subcategory: string
+  ): ExpectedTransaction {
+    return {
+      merchant: payment.merchant,
+      expectedAmount: payment.typicalAmount,
+      category,
+      subcategory,
+      recurring: true,
+      confidence: payment.confidence,
+      confidenceTier: payment.confidenceTier,
+      status: determineStatus(payment, today, formatDate(monthEnd)),
+      recurrence: payment,
+    };
+  }
+
   for (const payment of patterns.recurringExpenses) {
+    // Skip LOW confidence entirely
+    if (payment.confidenceTier === "low") continue;
+
     if (payment.nextExpected <= formatDate(monthEnd)) {
-      addToDay(payment.nextExpected, {
-        merchant: payment.merchant,
-        expectedAmount: payment.typicalAmount,
-        category: "",
-        subcategory: (payment as any).subcategory ?? "one-off",
-        recurring: true,
-        confidence: payment.confidence,
-        recurrence: payment,
-      });
+      const tx = buildTx(payment, "", (payment as any).subcategory ?? "one-off");
+      addToDay(payment.nextExpected, tx, payment.confidenceTier === "medium");
     }
   }
 
   for (const income of patterns.recurringIncome) {
+    if (income.confidenceTier === "low") continue;
+
     if (income.nextExpected <= formatDate(monthEnd)) {
-      addToDay(income.nextExpected, {
-        merchant: income.merchant,
-        expectedAmount: income.typicalAmount,
-        category: "Income",
-        subcategory: "salary",
-        recurring: true,
-        confidence: income.confidence,
-        recurrence: income,
-      });
+      const tx = buildTx(income, "Income", "salary");
+      addToDay(income.nextExpected, tx, income.confidenceTier === "medium");
     }
   }
 
   let balance = currentBalance;
-  const totalExpectedExpenses = patterns.recurringExpenses.reduce((s, p) => s + p.typicalAmount, 0);
+  const highConfidenceExpenses = patterns.recurringExpenses
+    .filter(p => p.confidenceTier === "high");
+  const totalExpectedExpenses = highConfidenceExpenses.reduce((s, p) => s + p.typicalAmount, 0);
 
   for (let d = new Date(startDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     const dateStr = formatDate(d);
     const dayTxs = perDay.get(dateStr) ?? [];
+    const possibleTxs = possiblePerDay.get(dateStr) ?? [];
     const income = dayTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
     const expenses = dayTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
     const opening = balance;
@@ -97,8 +138,10 @@ export function generateDailyForecast(
       expectedExpenses: expenses,
       closingBalance: closing,
       transactions: dayTxs,
+      possibleUpcoming: possibleTxs,
       riskFlag,
       riskMessage,
+      transactionCount: dayTxs.length + possibleTxs.length,
     });
 
     balance = closing;

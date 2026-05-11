@@ -189,39 +189,45 @@ export function generateForecast(
   currentBalance: number,
   today?: string
 ): MonthEndForecast {
-  const daily = generateDailyForecast(patterns, currentBalance, today);
+  const todayStr = today ?? new Date().toISOString().split("T")[0];
+  const monthEnd = getMonthEnd(todayStr);
 
-  const remainingIncome = patterns.recurringIncome
-    .filter((i) => i.nextExpected <= daily[daily.length - 1]?.date)
-    .reduce((s, i) => s + i.typicalAmount, 0);
+  // isMonthComplete: deferred to Phase 1b — computed in aggregate route based on statement coverage
 
-  const remainingExpenses = patterns.recurringExpenses
-    .filter((e) => e.nextExpected <= daily[daily.length - 1]?.date)
-    .reduce((s, e) => s + e.typicalAmount, 0);
+  const daily = generateDailyForecast(patterns, currentBalance, todayStr);
 
-  const nextIncomeDates = patterns.recurringIncome
+  // Filter to HIGH confidence only for main forecast
+  const highConfidenceIncome = patterns.recurringIncome
+    .filter((i: any) => i.confidenceTier === "high" && i.nextExpected <= monthEnd);
+  const highConfidenceExpenses = patterns.recurringExpenses
+    .filter((e: any) => e.confidenceTier === "high" && e.nextExpected <= monthEnd);
+
+  const remainingIncome = highConfidenceIncome.reduce((s, i) => s + i.typicalAmount, 0);
+  const remainingExpenses = highConfidenceExpenses.reduce((s, e) => s + e.typicalAmount, 0);
+
+  const nextIncomeDates = highConfidenceIncome
     .map((i) => i.nextExpected)
     .sort();
   const nextIncomeDate = nextIncomeDates.length > 0 ? nextIncomeDates[0] : null;
 
-  const totalMonthlyExpenses = patterns.recurringExpenses.reduce((s, e) => s + e.typicalAmount, 0);
+  const totalMonthlyExpenses = highConfidenceExpenses.reduce((s, e) => s + e.typicalAmount, 0);
 
   const { status, reason: statusReason } = calculateStatus(daily, totalMonthlyExpenses, nextIncomeDate);
 
   const risks = detectRisks(daily);
 
-  // Danger window: longest consecutive below-threshold period
+  // Danger window
   const threshold = totalMonthlyExpenses * 0.2;
   const lowDays = daily.filter((d) => d.closingBalance < threshold);
   const dangerWindow = lowDays.length > 0
     ? { from: lowDays[0].date, to: lowDays[lowDays.length - 1].date, lowestBalance: Math.min(...lowDays.map((d) => d.closingBalance)) }
     : null;
 
-  // Confidence: average of recurring payment confidences
-  const confidences = [...patterns.recurringExpenses, ...patterns.recurringIncome].map((p) => p.confidence);
+  // Confidence: average of HIGH confidence pattern confidences
+  const confidences = [...highConfidenceIncome, ...highConfidenceExpenses].map((p: any) => p.confidence);
   const avgConfidence = confidences.length > 0
-    ? confidences.reduce((s, c) => s + c, 0) / confidences.length
-    : 0.3;
+    ? confidences.reduce((s: number, c: number) => s + c, 0) / confidences.length
+    : 0;
 
   return {
     currentBalance,
@@ -237,6 +243,12 @@ export function generateForecast(
     biggestRisks: risks,
     generatedAt: new Date().toISOString(),
   };
+}
+
+function getMonthEnd(today: string): string {
+  const d = new Date(today);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return end.toISOString().split("T")[0];
 }
 
 export type { DailyForecast, ExpectedTransaction, ForecastStatus, RiskItem };
