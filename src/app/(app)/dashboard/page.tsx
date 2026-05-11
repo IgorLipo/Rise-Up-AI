@@ -5,15 +5,14 @@ import { useActiveCompany } from "@/lib/auth/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { MonthEndForecast } from "@/lib/forecast";
 import { EmptyDashboard } from "@/components/dashboard/empty-dashboard";
-import { AccumulatedStats } from "@/components/dashboard/accumulated-stats";
-import { MonthlySummaries } from "@/components/dashboard/monthly-summaries";
-import { CategoryBreakdown } from "@/components/dashboard/category-breakdown";
-import { VendorLearning } from "@/components/dashboard/vendor-learning";
-import { SuspiciousFlagged } from "@/components/dashboard/suspicious-flagged";
-import { DailyForecastChart } from "@/components/charts/daily-forecast-chart";
-import { InsightHeroCard } from "@/components/dashboard/insight-hero-card";
 import { DateRangeSelector, type DateRangePreset } from "@/components/dashboard/date-range-selector";
 import { TabNavigation } from "@/components/dashboard/tab-navigation";
+import { ForecastTab } from "@/components/dashboard/forecast-tab";
+import { HistoryTab } from "@/components/dashboard/history-tab";
+import { IntelligenceTab } from "@/components/dashboard/intelligence-tab";
+import { TransactionsTab } from "@/components/dashboard/transactions-tab";
+import { ReviewTab } from "@/components/dashboard/review-tab";
+import { RecommendedActions } from "@/components/dashboard/recommended-actions";
 
 interface AggregateResponse {
   hasData: boolean;
@@ -216,7 +215,7 @@ export default function DashboardPage() {
   if (error) return <EmptyDashboard />;
   if (!data || !data.hasData) return <EmptyDashboard />;
 
-  const { currentPosition, forecast, accumulated, categories, vendors, crossMonthInsights, suspicious } = data;
+  const { currentPosition, accumulated } = data;
 
   const searchParams = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "forecast";
@@ -263,126 +262,80 @@ export default function DashboardPage() {
 
       {/* Tab content */}
       {activeTab === "forecast" && (
-        <div className="space-y-5 mt-5">
-          <AccumulatedStats
-            currentBalance={currentPosition.balance ?? 0}
-            predictedMonthEnd={forecast?.predictedMonthEnd ?? 0}
-            remainingIncome={forecast?.remainingIncome ?? 0}
-            remainingExpenses={forecast?.remainingExpenses ?? 0}
-            status={forecast?.status ?? "safe"}
-            confidence={forecast?.confidence ?? 0}
-            netFlow={accumulated.netFlow}
+        <div className="mt-5 space-y-5">
+          <ForecastTab
+            currentPosition={currentPosition}
+            forecast={data.forecast}
+            accumulated={accumulated}
+            categories={data.categories}
+            patterns={data.patterns}
             totalDocuments={data.totalDocuments}
             totalTransactions={data.totalTransactions}
-            balanceIsEstimated={currentPosition.isEstimated}
-            balanceCatchUpDays={0}
-            statementClosingBalance={currentPosition.balance ?? undefined}
-            dateFilterActive={false}
-            balanceSource={currentPosition.source}
-            isStale={currentPosition.isStale}
-            statementPeriodEnd={currentPosition.statementPeriodEnd ?? undefined}
-            forecast={data.forecast}
-            patterns={data.patterns}
           />
-          {forecast && (
-            <InsightHeroCard
-              headline={forecast.statusReason}
-              summary={buildInsightSummary(forecast, categories)}
-              severity={
-                forecast.status === "safe" ? "info"
-                  : forecast.status === "watch" ? "warning"
-                  : "critical"
-              }
-            />
-          )}
-          {forecast && forecast.dailyForecast.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider mb-3">
-                Daily forecast
-              </h2>
-              <DailyForecastChart data={forecast.dailyForecast} />
-            </div>
-          )}
+          <RecommendedActions
+            forecast={data.forecast}
+            currentBalance={currentPosition.balance}
+          />
         </div>
       )}
 
       {activeTab === "history" && (
-        <div className="mt-5 p-8 text-center text-zinc-400 text-sm">
-          Monthly history &mdash; implemented in Plan 02-02
+        <div className="mt-5">
+          <HistoryTab
+            monthly={data.monthly}
+            accumulated={accumulated}
+            categories={data.categories}
+            suspicious={data.suspicious}
+            onViewTransactions={(month) => router.push(`/transactions?month=${month}`)}
+          />
         </div>
       )}
 
       {activeTab === "intelligence" && (
-        <div className="space-y-5 mt-5">
-          <div className="bg-white border border-zinc-200 rounded-xl p-4">
-            <VendorLearning
-              totalVendors={vendors.total}
-              recurring={vendors.recurring}
-              suspicious={vendors.suspicious}
-              oneOff={vendors.oneOff}
-              crossMonthInsights={crossMonthInsights}
-            />
-          </div>
+        <div className="mt-5">
+          <IntelligenceTab
+            vendors={data.vendors}
+            crossMonthInsights={data.crossMonthInsights}
+            patterns={data.patterns}
+            entities={data.entities}
+            newVendors={data.newVendors}
+          />
         </div>
       )}
 
       {activeTab === "transactions" && (
-        <div className="space-y-5 mt-5">
-          <div className="bg-white border border-zinc-200 rounded-xl p-4">
-            <CategoryBreakdown categories={categories} />
-          </div>
+        <div className="mt-5">
+          <TransactionsTab
+            categories={data.categories}
+            totalTransactions={data.totalTransactions}
+            onViewAllTransactions={() => router.push("/transactions")}
+          />
         </div>
       )}
 
       {activeTab === "review" && (
-        <div className="space-y-5 mt-5">
-          <SuspiciousFlagged flagged={suspicious} />
+        <div className="mt-5">
+          <ReviewTab suspicious={data.suspicious} />
+        </div>
+      )}
+
+      {!TABS.some((t) => t.id === activeTab) && (
+        <div className="mt-5 space-y-5">
+          <ForecastTab
+            currentPosition={currentPosition}
+            forecast={data.forecast}
+            accumulated={accumulated}
+            categories={data.categories}
+            patterns={data.patterns}
+            totalDocuments={data.totalDocuments}
+            totalTransactions={data.totalTransactions}
+          />
+          <RecommendedActions
+            forecast={data.forecast}
+            currentBalance={currentPosition.balance}
+          />
         </div>
       )}
     </div>
   );
-}
-
-function buildInsightSummary(
-  fc: MonthEndForecast,
-  categories: AggregateResponse["categories"]
-): string {
-  const parts: string[] = [];
-
-  if (fc.remainingExpenses > 0) {
-    // Find top 3 expense categories
-    const topCats = categories.slice(0, 3).map((c) => c.category.replace(/-/g, " "));
-    parts.push(
-      `Around ${formatCurrencyStatic(fc.remainingExpenses)} expected to leave before month-end` +
-      (topCats.length > 0 ? `, mainly ${topCats.join(", ")}` : "")
-    );
-  }
-
-  if (fc.nextIncomeDate) {
-    parts.push(
-      `next income expected ${new Date(fc.nextIncomeDate).toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-      })}`
-    );
-  }
-
-  if (fc.dangerWindow) {
-    parts.push(
-      `balance may drop to ${formatCurrencyStatic(fc.dangerWindow.lowestBalance)} between ${fc.dangerWindow.from.slice(5)} and ${fc.dangerWindow.to.slice(5)}`
-    );
-  }
-
-  if (fc.biggestRisks.length > 0) {
-    parts.push(`${fc.biggestRisks[0].description}`);
-  }
-
-  return parts.join(". ") + ".";
-}
-
-function formatCurrencyStatic(amount: number): string {
-  return `£${Math.abs(amount).toLocaleString("en-GB", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
 }
