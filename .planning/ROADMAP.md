@@ -50,7 +50,10 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
   3. User can review flagged transactions with clear reasons, confidence scores, and one-click actions (mark as business/personal, exclude from forecast, apply rule to similar)
   4. User sees individual month cards showing month name, statement period, opening/closing balance, income/expenses, net movement, transaction count, top sources, unusual items, and forecast accuracy
   5. User sees a prominent risk status display (Safe/Watch/Risk/Critical) with clear criteria, key drivers showing biggest expected income/expenses, and specific recommended actions
-**Plans**: TBD
+**Plans**: 3 plans (3 waves)
+- [ ] 02-01-PLAN.md — Tab framework + status display (TabNavigation, page restructure, StatusBadge with criteria, KeyDrivers)
+- [ ] 02-02-PLAN.md — Forecast + History + Intelligence tabs (grouped daily forecast, rich month cards, interactive insight detail panel)
+- [ ] 02-03-PLAN.md — Review Queue + Transactions + Assembly (actionable review items, RecommendedActions, final page.tsx wiring)
 **UI hint**: yes
 
 ## Progress
@@ -58,4 +61,4 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Logic Fixes | 1/1 | 10/10 tasks complete | 2026-05-11 |
-| 2. Dashboard UI & Experience | 0/0 | Not started | - |
+| 2. Dashboard UI & Experience | 0/3 | Not started | - |
