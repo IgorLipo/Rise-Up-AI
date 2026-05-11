@@ -281,6 +281,8 @@ export default function DashboardPage() {
             balanceSource={currentPosition.source}
             isStale={currentPosition.isStale}
             statementPeriodEnd={currentPosition.statementPeriodEnd ?? undefined}
+            forecast={data.forecast}
+            patterns={data.patterns}
           />
           {forecast && (
             <InsightHeroCard

@@ -1,8 +1,10 @@
 "use client";
 
 import { formatCurrency } from "@/lib/utils";
-import { StatusBadge } from "@/components/forecast/status-badge";
+import { StatusBadge } from "@/components/dashboard/status-badge";
+import { KeyDrivers } from "@/components/dashboard/key-drivers";
 import type { ForecastStatus } from "@/types";
+import type { MonthEndForecast } from "@/lib/forecast";
 
 interface Props {
   currentBalance: number;
@@ -21,6 +23,19 @@ interface Props {
   balanceSource?: "statement" | "catchUp" | "unavailable";
   isStale?: boolean;
   statementPeriodEnd?: string;
+  forecast?: MonthEndForecast | null;
+  patterns?: {
+    recurringIncome: Array<{
+      merchant: string;
+      typicalAmount: number;
+      nextExpected: string;
+    }>;
+    recurringExpenses: Array<{
+      merchant: string;
+      typicalAmount: number;
+      nextExpected: string;
+    }>;
+  } | null;
 }
 
 export function AccumulatedStats({
@@ -40,6 +55,8 @@ export function AccumulatedStats({
   balanceSource,
   isStale,
   statementPeriodEnd,
+  forecast,
+  patterns,
 }: Props) {
   // Determine the balance subtitle based on context
   let balanceSubtitle: string;
@@ -116,7 +133,7 @@ export function AccumulatedStats({
           <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1">
             Status
           </div>
-          <StatusBadge status={status} className="mb-2" />
+          <StatusBadge status={status} className="mb-2" showCriteria={true} />
           <div className="text-xs text-zinc-400">
             {Math.round(confidence * 100)}% confidence
           </div>
@@ -148,6 +165,11 @@ export function AccumulatedStats({
           </div>
         </div>
       </div>
+
+      {/* Key drivers */}
+      {forecast && patterns && (
+        <KeyDrivers forecast={forecast} patterns={patterns} />
+      )}
     </div>
   );
 }
