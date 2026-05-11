@@ -1,6 +1,8 @@
 import type { Transaction } from "@/types";
 import { coreMerchant } from "./merchant-normalizer";
 
+export type ConfidenceTier = "high" | "medium" | "low";
+
 export interface RecurringPayment {
   id: string;
   merchant: string;
@@ -11,6 +13,7 @@ export interface RecurringPayment {
   lastOccurrence: string;
   nextExpected: string;
   confidence: number;
+  confidenceTier: ConfidenceTier;
   occurrences: { date: string; amount: number }[];
 }
 
@@ -49,14 +52,50 @@ function classifyInterval(gaps: number[]): { interval: RecurringPayment["interva
   return { interval: "irregular", consistency: 0 };
 }
 
-function scoreConfidence(occurrences: number, amountCV: number, intervalConsistency: number): number {
-  let score = 0.5;
-  score += Math.min(occurrences - 1, 3) * 0.1;
-  if (amountCV < 0.05) score += 0.2;
-  else if (amountCV < 0.15) score += 0.1;
-  score += intervalConsistency * 0.1;
-  if (intervalConsistency < 0.5) score -= 0.2;
+function computeDayOfMonthVariance(occurrences: { date: string; amount: number }[]): number {
+  if (occurrences.length < 2) return 999;
+  const days = occurrences.map(o => new Date(o.date).getDate());
+  const mean = days.reduce((s, d) => s + d, 0) / days.length;
+  const variance = days.reduce((s, d) => s + Math.pow(d - mean, 2), 0) / days.length;
+  return Math.sqrt(variance); // standard deviation in days
+}
+
+function countUniqueMonths(occurrences: { date: string; amount: number }[]): number {
+  return new Set(occurrences.map(o => o.date.slice(0, 7))).size;
+}
+
+function scoreConfidence(
+  occurrences: number,
+  amountCV: number,
+  intervalConsistency: number,
+  uniqueMonths: number,
+  dayOfMonthStdDev: number
+): number {
+  // 5-factor weighted confidence
+  const occurrenceScore = Math.min(1, (occurrences - 1) / 3); // 0→1 at 4 occurrences
+  const monthSpreadScore = Math.min(1, (uniqueMonths - 1) / 3); // 0→1 at 4 months
+  const amountStabilityScore = amountCV < 0.05 ? 1 : amountCV < 0.15 ? 0.7 : amountCV < 0.3 ? 0.4 : 0.1;
+  const intervalScore = Math.max(0, Math.min(1, intervalConsistency));
+  const dayVarianceScore = dayOfMonthStdDev <= 2 ? 1 : dayOfMonthStdDev <= 5 ? 0.7 : dayOfMonthStdDev <= 10 ? 0.4 : 0.1;
+
+  // Weighted sum
+  const weights = { occurrence: 0.30, monthSpread: 0.25, amountStability: 0.20, interval: 0.15, dayVariance: 0.10 };
+  let score = occurrenceScore * weights.occurrence
+    + monthSpreadScore * weights.monthSpread
+    + amountStabilityScore * weights.amountStability
+    + intervalScore * weights.interval
+    + dayVarianceScore * weights.dayVariance;
+
+  // Cap at MEDIUM if amount variance is too high
+  if (amountCV > 0.3) score = Math.min(score, 0.65);
+
   return Math.max(0, Math.min(1, score));
+}
+
+export function getConfidenceTier(score: number): ConfidenceTier {
+  if (score >= 0.70) return "high";
+  if (score >= 0.40) return "medium";
+  return "low";
 }
 
 export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
@@ -103,7 +142,10 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
     const variance = amounts.reduce((s, a) => s + Math.pow(a - mean, 2), 0) / amounts.length;
     const cv = Math.sqrt(variance) / mean;
 
-    const confidence = scoreConfidence(sorted.length, cv, consistency);
+    const uniqueMonths = countUniqueMonths(sorted.map(t => ({ date: t.date, amount: t.amount })));
+    const dayStdDev = computeDayOfMonthVariance(sorted.map(t => ({ date: t.date, amount: t.amount })));
+    const confidence = scoreConfidence(sorted.length, cv, consistency, uniqueMonths, dayStdDev);
+    const tier = getConfidenceTier(confidence);
 
     const last = sorted[sorted.length - 1];
     const gap = Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
@@ -125,6 +167,7 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
       lastOccurrence: last.date,
       nextExpected,
       confidence,
+      confidenceTier: tier,
       occurrences: sorted.map((t) => ({ date: t.date, amount: t.amount })),
     };
 

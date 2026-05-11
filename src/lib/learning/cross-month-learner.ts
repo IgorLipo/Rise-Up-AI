@@ -162,7 +162,14 @@ export function learnFromHistory(
         else if (avgGap >= 350 && avgGap <= 380) vendor.recurrencePattern = "annual";
         else vendor.recurrencePattern = "irregular";
       }
+    }
 
+    // Separate by confidence tier and transaction type
+    if (vendor.isRecurring) {
+      recurringCandidates.push(vendor);
+    } else if (vendor.months.length >= 2 && vendor.appearanceCount >= 3) {
+      // Frequent but irregular — still recurring for learning purposes
+      vendor.isRecurring = true;
       recurringCandidates.push(vendor);
     }
 
