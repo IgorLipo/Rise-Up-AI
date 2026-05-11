@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { StatementData, ParseResult, AIInsights, SpendReviewResult, AnalysisMode, Insight } from "@/types";
+import type { UploadSummary } from "@/lib/pipeline/upload-pipeline";
 import { InsightCard } from "@/components/insight-card";
 import { InsightDrawer } from "@/components/insight-drawer";
 import { OwnerReviewPack } from "@/components/owner-review-pack";
@@ -53,6 +54,30 @@ export default function UploadPage() {
   const doneCount = jobs.filter((j) => j.status === "done").length;
   const skipCount = jobs.filter((j) => j.status === "skipped").length;
   const errorCount = jobs.filter((j) => j.status === "error").length;
+
+  // Pipeline summary — fetched after upload completes to show recalculation results
+  const [pipelineSummary, setPipelineSummary] = useState<UploadSummary | null>(null);
+
+  useEffect(() => {
+    if (!allDone || doneCount === 0) return;
+    let cancelled = false;
+    fetch("/api/documents/aggregate")
+      .then(r => r.json())
+      .then(json => {
+        if (cancelled) return;
+        setPipelineSummary({
+          importedPeriod: null, // aggregate doesn't return per-file periods
+          latestBalance: json.currentPosition?.balance ?? null,
+          transactionCount: json.totalTransactions ?? 0,
+          newVendors: json.newVendors?.map((v: any) => v.merchantNormalized) ?? [],
+          updatedPatterns: (json.patterns?.recurringExpenses?.length ?? 0) + (json.patterns?.recurringIncome?.length ?? 0),
+          potentialPersonalExpenses: json.suspicious?.length ?? 0,
+          forecastUpdated: json.forecast != null,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [allDone, doneCount]);
 
   const processFiles = useCallback(async (files: FileList | File[]) => {
     const fileArr = Array.from(files).filter((f) => {
@@ -353,6 +378,37 @@ export default function UploadPage() {
                   }`}>{card.value}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Pipeline recalculation summary */}
+          {pipelineSummary && doneCount > 0 && (
+            <div className="bg-white border border-zinc-200 rounded-xl p-4">
+              <span className="font-mono text-xs text-zinc-500 uppercase tracking-wider">
+                Pipeline Summary
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
+                <div className="text-center">
+                  <span className="text-[10px] text-zinc-400 uppercase tracking-wider">Latest Balance</span>
+                  <p className="text-lg font-bold text-zinc-900 mt-0.5">
+                    {pipelineSummary.latestBalance != null ? formatCurrency(pipelineSummary.latestBalance) : "—"}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <span className="text-[10px] text-zinc-400 uppercase tracking-wider">New Vendors</span>
+                  <p className="text-lg font-bold text-zinc-900 mt-0.5">{pipelineSummary.newVendors.length}</p>
+                </div>
+                <div className="text-center">
+                  <span className="text-[10px] text-zinc-400 uppercase tracking-wider">Patterns Updated</span>
+                  <p className="text-lg font-bold text-zinc-900 mt-0.5">{pipelineSummary.updatedPatterns}</p>
+                </div>
+                <div className="text-center">
+                  <span className="text-[10px] text-zinc-400 uppercase tracking-wider">Personal Items</span>
+                  <p className={`text-lg font-bold mt-0.5 ${pipelineSummary.potentialPersonalExpenses > 0 ? "text-amber-600" : "text-zinc-400"}`}>
+                    {pipelineSummary.potentialPersonalExpenses}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
