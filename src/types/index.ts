@@ -237,6 +237,7 @@ export type Subcategory =
   | "utilities" | "bank-fees" | "insurance" | "marketing"
   | "travel" | "office-supplies" | "professional-services"
   | "supplies" | "director-loans" | "property-management" | "property-income"
+  | "food-dining"
   | "one-off";
 
 export interface CurrentPosition {

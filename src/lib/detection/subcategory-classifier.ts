@@ -4,7 +4,7 @@ export type Subcategory =
   | "utilities" | "bank-fees" | "insurance" | "marketing"
   | "travel" | "office-supplies" | "professional-services"
   | "director-loans" | "property-management" | "property-income"
-  | "supplies"
+  | "supplies" | "food-dining"
   | "one-off";
 
 interface ClassificationResult {
@@ -14,19 +14,68 @@ interface ClassificationResult {
 }
 
 // Keyword-based fallback classifier (runs instantly, no API call)
+// Order matters — first match wins (except one-off which is a catch-all).
+// food-dining MUST be before software and subscriptions to prevent
+// food brands from matching downstream patterns.
 const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
+  "food-dining": [
+    /\bcosta\b/i,
+    /\bstarbucks\b/i,
+    /\bpret\s*a\s*manger\b/i,
+    /\bnero\b/i,
+    /\bcaff(?:[eè])\s*nero\b/i,
+    /\bgreggs\b/i,
+    /\bmcdonald/i,
+    /\b(kfc|kentucky)\b/i,
+    /\bburger\s*king\b/i,
+    /\bdomino.?s\b/i,
+    /\bpizza\s*hut\b/i,
+    /\bpizza\s*express\b/i,
+    /\bwagamama\b/i,
+    /\bnando.?s\b/i,
+    /\bsubway\b/i,
+    /\bdeliveroo\b/i,
+    /\bjust\s*eat\b/i,
+    /\buber\s*eats?\b/i,
+    /\brestaurant\b/i,
+    /\btakeaway\b/i,
+    /\bcaf[ée]\b/i,
+    /\bbakery\b/i,
+    /\bsandwich\b/i,
+    /\blunch\b/i,
+    /\bdinner\b/i,
+    /\bbreakfast\b/i,
+    /\bmeal\b/i,
+  ],
   salary: [/salary|wage|payroll|staff payment/i],
-  software: [/xero|quickbooks|slack|notion|linear|figma|github|gitlab|atlassian|jira|hubspot|salesforce|zendesk|mailchimp|google workspace|microsoft 365|office 365|dropbox|vercel|netlify|heroku|aws |supabase|firebase|sentry|datadog|ahrefs|semrush/i],
+  software: [
+    /\bapple\b/i,                            // Apple purchases — Software/Tools per user spec
+    /\badobe\b/i,
+    /\bcanva\b/i,
+    /\bfigma\b/i,
+    /\bnotion\b/i,
+    /\blinear\b/i,
+    /\bgithub\b/i,
+    /\bgitlab\b/i,
+    /\bvercel\b/i,
+    /\bnetlify\b/i,
+    /\bheroku\b/i,
+    /\bdigital\s*ocean\b/i,
+    /\blinode\b/i,
+    /\bcloudflare\b/i,
+    /\bopenai\b/i,
+    /\banthropic\b/i,
+    /\bmistral\b/i,
+    /\bdeepseek\b/i,
+    /\bchatgpt\b/i,
+    /xero|quickbooks|slack|notion|linear|figma|github|gitlab|atlassian|jira|hubspot|salesforce|zendesk|mailchimp|google workspace|microsoft 365|office 365|dropbox|vercel|netlify|heroku|aws |supabase|firebase|sentry|datadog|ahrefs|semrush/i,
+  ],
   subscriptions: [/subscription|monthly fee|annual fee|recurring/i,
-    /apple\.com\/bill/i,
-    /\bapple\b.*\b(media|services|icloud|app store)\b/i,
     /amazon\s*prime/i,
     /prime\s*video/i,
     /\bspotify\b/i,
     /\bpuregym\b/i,
     /the\s*gym\s*group/i,
-    /\bopenai\b/i,
-    /\bchatgpt\b/i,
     /monday\.com/i,
     /pdfleader/i,
     /01\.ai/i,
@@ -105,19 +154,19 @@ export function classifySubcategory(description: string): ClassificationResult {
       }
     }
   }
-  return { category: "Other", subcategory: "one-off", confidence: 0.4 };
+  return { category: "Uncategorized", subcategory: "one-off", confidence: 0.4 };
 }
 
 function mapToCategory(sub: Subcategory): string {
   const mapping: Record<Subcategory, string> = {
-    salary: "Salaries",
+    salary: "Salaries & Wages",
     subscriptions: "Subscriptions",
-    software: "Software & SaaS",
-    "car-expenses": "Car Expenses",
-    rent: "Rent & Housing",
+    software: "Software/Tools",
+    "car-expenses": "Car & Transport",
+    rent: "Rent & Property",
     taxes: "Taxes",
     loans: "Loan Repayments",
-    "supplier-payments": "Supplier Payments",
+    "supplier-payments": "Suppliers & Services",
     utilities: "Utilities",
     "bank-fees": "Bank Fees",
     insurance: "Insurance",
@@ -126,10 +175,11 @@ function mapToCategory(sub: Subcategory): string {
     "office-supplies": "Office Supplies",
     "professional-services": "Professional Services",
     "director-loans": "Director Loans",
-    "property-management": "Property Management",
-    "property-income": "Property Income",
-    supplies: "Supplies & Retail",
-    "one-off": "Other",
+    "property-management": "Rent & Property",
+    "property-income": "Other Income",
+    supplies: "Shopping",
+    "food-dining": "Food & Dining",
+    "one-off": "Uncategorized",
   };
   return mapping[sub];
 }
