@@ -318,6 +318,13 @@ function cleanDescription(desc: string): string {
     .trim();
 }
 
+function extractBalance(text: string, label: string): number | undefined {
+  const re = new RegExp(`${label}\\s+\£?([\\d,]+\\.\\d{2})`, "i");
+  const m = text.match(re);
+  if (!m) return undefined;
+  return parseFloat(m[1].replace(/,/g, ""));
+}
+
 function extractAccountInfo(text: string): StatementData["accountInfo"] {
   const info: StatementData["accountInfo"] = {};
 
@@ -342,7 +349,6 @@ function extractAccountInfo(text: string): StatementData["accountInfo"] {
   if (periodMatch) {
     info.statementPeriod = { from: periodMatch[1], to: periodMatch[2] };
   } else {
-    // Fallback for NatWest continuous text: derive period from DD MON dates
     const year = extractStatementYear(text);
     const dateRe = /\b(\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC))\b/gi;
     const dates: string[] = [];
@@ -356,6 +362,14 @@ function extractAccountInfo(text: string): StatementData["accountInfo"] {
       info.statementPeriod = { from: dates[0], to: dates[dates.length - 1] };
     }
   }
+
+  // Extract balances from statement header
+  info.openingBalance =
+    extractBalance(text, "Previous Balance") ??
+    extractBalance(text, "BROUGHT FORWARD");
+  info.closingBalance =
+    extractBalance(text, "New Balance") ??
+    extractBalance(text, "Closing Balance");
 
   return info;
 }

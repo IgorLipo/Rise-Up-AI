@@ -211,14 +211,14 @@ export default function DashboardPage() {
       });
   }, [companyId, dateRange]);
 
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get("tab") ?? "forecast";
+
   if (loading) return <DashboardSkeleton />;
   if (error) return <EmptyDashboard />;
   if (!data || !data.hasData) return <EmptyDashboard />;
 
   const { currentPosition, accumulated } = data;
-
-  const searchParams = useSearchParams();
-  const activeTab = searchParams.get("tab") ?? "forecast";
 
   const handleTabChange = (tabId: string) => {
     const params = new URLSearchParams(searchParams.toString());
