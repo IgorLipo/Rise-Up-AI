@@ -4,7 +4,8 @@ import { detectAllAsync } from "@/lib/detection";
 import { generateForecast, daysBetween } from "@/lib/forecast";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
-import { upsertVendorIntelBatch, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
+import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
+import type { VendorIntelEntry } from "@/lib/vendor-intel";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
 import { extractEntities, entityAttributesForVendor } from "@/lib/detection/entity-extractor";
 import type { AIClassification } from "@/lib/detection/ai-classifier";
@@ -178,7 +179,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Build vendor intel entries from learning
+  // Build initial vendor intel entries from learning (synchronous, no AI calls)
   const vendorIntelEntries = buildVendorIntelEntries(learningReport, companyId);
 
   // Enrich vendor intel with entity attributes
@@ -190,10 +191,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Persist vendor intel to Supabase (fire-and-forget)
-  if (vendorIntelEntries.length > 0) {
-    upsertVendorIntelBatch(vendorIntelEntries).catch(() => {});
-  }
+  // Ensure ALL vendors from ALL statements have complete vendor_intel entries
+  // (Researches unknown vendors via DeepSeek, updates existing ones, persists)
+  // Run in background — response doesn't depend on this completing
+  ensureCompleteVendorIntel(learningReport, companyId).catch(() => {});
 
   // ── Suspicious Detection (always uses all transactions) ──
   // Build known business vendors to skip personal detection for business transactions
@@ -218,9 +219,11 @@ export async function GET(req: NextRequest) {
   }
 
   // Load existing vendor_intel from DB (includes user corrections)
+  const existingVendorMap = new Map<string, VendorIntelEntry>();
   try {
     const dbVendors = await listVendorIntel(companyId);
     for (const v of dbVendors) {
+      existingVendorMap.set(v.canonicalName.toLowerCase(), v);
       if (v.source === "user" || !knownVendors.has(v.canonicalName)) {
         knownVendors.set(v.canonicalName, {
           subcategory: v.subcategory as any,
@@ -523,6 +526,7 @@ export async function GET(req: NextRequest) {
     if (v.isRecurring) confidence += 0.1;
     confidence = Math.min(1, confidence);
 
+    const intelEntry = existingVendorMap.get(v.canonicalName.toLowerCase());
     return {
       canonicalName: v.canonicalName,
       subcategory: v.subcategory,
@@ -535,6 +539,8 @@ export async function GET(req: NextRequest) {
       firstSeen: v.firstSeen,
       lastSeen: v.lastSeen,
       amountRange: v.amountRange,
+      isFirstSeen: intelEntry?.isFirstSeen ?? false,
+      direction: v.direction ?? "expense",
     };
   });
 

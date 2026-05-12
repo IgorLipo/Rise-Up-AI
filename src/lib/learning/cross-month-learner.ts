@@ -359,6 +359,10 @@ export function buildVendorIntelEntries(
       aiExplanation: existing?.aiExplanation ?? null,
       confidence,
       source: existing?.source ?? "system",
+      researchedAt: existing?.researchedAt ?? null,
+      researchData: existing?.researchData ?? null,
+      isFirstSeen: existing?.isFirstSeen ?? false,
+      direction: vendor.direction,
     });
   }
 

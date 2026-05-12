@@ -1,7 +1,7 @@
-import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
+import { learnFromHistory } from "@/lib/learning/cross-month-learner";
 import { detectAllAsync } from "@/lib/detection";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
-import { upsertVendorIntelBatch } from "@/lib/vendor-intel";
+import { ensureCompleteVendorIntel } from "@/lib/vendor-intel";
 import { validateStatementBalance } from "@/lib/financial/math";
 import type { Transaction, StatementData } from "@/types";
 
@@ -37,11 +37,9 @@ export async function runUploadPipeline(
   const combinedTransactions = [...allTransactions, ...transactions];
   const learningReport = learnFromHistory(combinedTransactions);
 
-  // 3. Build vendor intel
-  const vendorIntelEntries = buildVendorIntelEntries(learningReport, companyId);
-  if (vendorIntelEntries.length > 0) {
-    await upsertVendorIntelBatch(vendorIntelEntries);
-  }
+  // 3. Ensure ALL vendors from ALL statements have complete vendor_intel entries
+  // (researches unknown vendors via DeepSeek, updates existing, persists)
+  await ensureCompleteVendorIntel(learningReport, companyId);
 
   // 4. Detect patterns
   const knownVendors = new Map<string, any>();

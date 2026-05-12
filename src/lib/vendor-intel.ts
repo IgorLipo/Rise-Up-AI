@@ -1,8 +1,11 @@
 import "server-only";
 
+import OpenAI from "openai";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
 import type { Subcategory } from "@/lib/detection/subcategory-classifier";
+import type { LearningReport } from "@/lib/learning/cross-month-learner";
+import { buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 
 export interface VendorIntelEntry {
   id?: string;
@@ -30,6 +33,10 @@ export interface VendorIntelEntry {
   aiExplanation: string | null;
   confidence: number;
   source: "ai" | "user" | "system" | "keyword";
+  researchedAt: string | null;
+  researchData: Record<string, any> | null;
+  isFirstSeen: boolean;
+  direction: string | null;
 }
 
 interface RawVendorRow {
@@ -58,6 +65,10 @@ interface RawVendorRow {
   ai_explanation: string | null;
   confidence: number;
   source: string;
+  researched_at: string | null;
+  research_data: Record<string, any> | null;
+  is_first_seen: boolean;
+  direction: string | null;
 }
 
 function mapRow(row: RawVendorRow): VendorIntelEntry {
@@ -87,6 +98,10 @@ function mapRow(row: RawVendorRow): VendorIntelEntry {
     aiExplanation: row.ai_explanation,
     confidence: Number(row.confidence ?? 0.5),
     source: (row.source as "ai" | "user" | "system" | "keyword") ?? "ai",
+    researchedAt: row.researched_at ?? null,
+    researchData: row.research_data ?? null,
+    isFirstSeen: row.is_first_seen ?? false,
+    direction: row.direction ?? null,
   };
 }
 
@@ -170,6 +185,10 @@ export async function upsertVendorIntel(entry: VendorIntelEntry): Promise<void> 
     ai_explanation: entry.aiExplanation,
     confidence: entry.confidence,
     source: entry.source,
+    researched_at: entry.researchedAt ?? null,
+    research_data: entry.researchData ?? {},
+    is_first_seen: entry.isFirstSeen ?? false,
+    direction: entry.direction ?? null,
     updated_at: new Date().toISOString(),
   }, {
     onConflict: "company_id, canonical_name",
@@ -206,6 +225,10 @@ export async function upsertVendorIntelBatch(entries: VendorIntelEntry[]): Promi
     ai_explanation: e.aiExplanation,
     confidence: e.confidence,
     source: e.source,
+    researched_at: e.researchedAt ?? null,
+    research_data: e.researchData ?? {},
+    is_first_seen: e.isFirstSeen ?? false,
+    direction: e.direction ?? null,
     updated_at: new Date().toISOString(),
   }));
 
@@ -284,6 +307,211 @@ export async function listAnnotations(companyId: string): Promise<any[]> {
     .limit(500);
 
   return data ?? [];
+}
+
+// ── Vendor Research (DeepSeek v4 Flash) ──
+
+export interface VendorResearchResult {
+  canonicalName: string;
+  category: string;
+  subcategory: string;
+  typicalPurpose: string;
+  isBusiness: boolean | null;
+  confidence: number;
+  reasoning: string;
+}
+
+const VENDOR_RESEARCH_PROMPT = `You are a business vendor researcher. Given a merchant name from a UK bank statement, identify what this business does, what category it falls into, and whether it's likely a business expense for a property management / supported accommodation company.
+
+Return a JSON object with these fields:
+{
+  "canonicalName": "clean normalized name of the business",
+  "category": "one of: Car & Transport, Food & Dining, Software/Tools, Rent & Property, Salaries & Wages, Taxes, Loan Repayments, Subscriptions, Utilities, Bank Fees, Suppliers & Services, Shopping, Insurance, Other Income, Professional Services, Uncategorized",
+  "subcategory": "specific subcategory matching the classification system",
+  "typicalPurpose": "brief description of what this vendor is and why someone would pay them",
+  "isBusiness": true/false/null,
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation"
+}`;
+
+export async function researchVendorWithAI(
+  merchantName: string,
+  companyContext?: string
+): Promise<VendorResearchResult | null> {
+  if (!process.env.DEEPSEEK_API_KEY) return null;
+
+  try {
+    const deepseek = new OpenAI({
+      baseURL: "https://api.deepseek.com/v1",
+      apiKey: process.env.DEEPSEEK_API_KEY,
+    });
+
+    const completion = await deepseek.chat.completions.create({
+      model: "deepseek-v4-flash",
+      temperature: 0.2,
+      max_tokens: 1024,
+      messages: [{
+        role: "user",
+        content: `${VENDOR_RESEARCH_PROMPT}\n\nResearch this vendor from a bank statement:\n"${merchantName}"\n\nCompany context: ${companyContext ?? "UK property management / supported accommodation business"}`,
+      }],
+      response_format: { type: "json_object" },
+    });
+
+    const text = completion.choices[0]?.message?.content;
+    if (!text) return null;
+
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    return {
+      canonicalName: json.canonicalName ?? merchantName,
+      category: json.category ?? "Uncategorized",
+      subcategory: json.subcategory ?? "one-off",
+      typicalPurpose: json.typicalPurpose ?? "",
+      isBusiness: json.isBusiness ?? null,
+      confidence: Math.min(1, Math.max(0, json.confidence ?? 0.5)),
+      reasoning: json.reasoning ?? "AI-researched vendor",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function researchAndCacheVendor(
+  companyId: string,
+  merchantName: string,
+  existingEntry?: VendorIntelEntry | null
+): Promise<VendorIntelEntry> {
+  const canonicalName = coreMerchant(normalizeMerchant(merchantName)).toLowerCase();
+
+  // Check if we already have researched data that's fresh (< 90 days)
+  if (existingEntry?.researchedAt) {
+    const researchedAge = Date.now() - new Date(existingEntry.researchedAt).getTime();
+    const ninetyDays = 90 * 24 * 60 * 60 * 1000;
+    if (researchedAge < ninetyDays) {
+      return existingEntry;
+    }
+  }
+
+  // Research with DeepSeek
+  const researchResult = await researchVendorWithAI(merchantName);
+
+  if (!researchResult) {
+    // AI unavailable — return basic entry
+    return {
+      companyId,
+      canonicalName,
+      aliases: [merchantName],
+      subcategory: "one-off" as Subcategory,
+      category: "Uncategorized",
+      typicalAmountMin: null,
+      typicalAmountMax: null,
+      typicalAmountAvg: null,
+      recurrencePattern: null,
+      recurrenceConfidence: 0,
+      firstSeenDate: new Date().toISOString().split("T")[0],
+      lastSeenDate: new Date().toISOString().split("T")[0],
+      appearanceCount: 1,
+      monthsSeen: [],
+      linkedProperty: null,
+      linkedPerson: null,
+      isBusiness: null,
+      isSuspicious: false,
+      isPersonal: false,
+      needsReview: true,
+      includeInForecast: false,
+      aiExplanation: "AI vendor research unavailable",
+      confidence: 0.3,
+      source: "keyword",
+      researchedAt: null,
+      researchData: null,
+      isFirstSeen: true,
+      direction: null,
+    };
+  }
+
+  return {
+    companyId,
+    canonicalName: coreMerchant(normalizeMerchant(researchResult.canonicalName)).toLowerCase(),
+    aliases: [merchantName, researchResult.canonicalName],
+    subcategory: researchResult.subcategory as Subcategory,
+    category: researchResult.category,
+    typicalAmountMin: null,
+    typicalAmountMax: null,
+    typicalAmountAvg: null,
+    recurrencePattern: null,
+    recurrenceConfidence: 0,
+    firstSeenDate: new Date().toISOString().split("T")[0],
+    lastSeenDate: new Date().toISOString().split("T")[0],
+    appearanceCount: 1,
+    monthsSeen: [],
+    linkedProperty: null,
+    linkedPerson: null,
+    isBusiness: researchResult.isBusiness,
+    isSuspicious: false,
+    isPersonal: false,
+    needsReview: researchResult.confidence < 0.7,
+    includeInForecast: false,
+    aiExplanation: researchResult.reasoning,
+    confidence: researchResult.confidence,
+    source: "ai",
+    researchedAt: new Date().toISOString(),
+    researchData: researchResult as any,
+    isFirstSeen: true,
+    direction: null,
+  };
+}
+
+// Ensure ALL vendors from the learning report have vendor_intel entries.
+// Researches unknown vendors via DeepSeek, updates existing ones with latest stats.
+export async function ensureCompleteVendorIntel(
+  learningReport: LearningReport,
+  companyId: string
+): Promise<VendorIntelEntry[]> {
+  const entries = buildVendorIntelEntries(learningReport, companyId);
+  const existingVendorIntel = await listVendorIntel(companyId);
+  const existingMap = new Map(
+    existingVendorIntel.map(v => [v.canonicalName.toLowerCase(), v])
+  );
+
+  const allEntries: VendorIntelEntry[] = [...entries];
+
+  for (const [coreName, vendor] of learningReport.vendors) {
+    const alreadyAdded = allEntries.some(
+      e => e.canonicalName.toLowerCase() === coreName.toLowerCase()
+    );
+    if (alreadyAdded) continue;
+
+    const existing = existingMap.get(coreName.toLowerCase());
+    if (existing) {
+      // Update existing entry with latest stats
+      existing.appearanceCount = vendor.appearanceCount;
+      existing.lastSeenDate = vendor.lastSeen;
+      existing.monthsSeen = vendor.months;
+      existing.isFirstSeen = false;
+      existing.direction = vendor.direction;
+      allEntries.push(existing);
+    } else {
+      // New vendor — research with AI
+      const researchEntry = await researchAndCacheVendor(
+        companyId,
+        vendor.canonicalName,
+        null
+      );
+      researchEntry.appearanceCount = vendor.appearanceCount;
+      researchEntry.firstSeenDate = vendor.firstSeen;
+      researchEntry.lastSeenDate = vendor.lastSeen;
+      researchEntry.monthsSeen = vendor.months;
+      researchEntry.isFirstSeen = true;
+      researchEntry.direction = vendor.direction;
+      allEntries.push(researchEntry);
+    }
+  }
+
+  // Persist all entries to Supabase (fire-and-forget)
+  if (allEntries.length > 0) {
+    await upsertVendorIntelBatch(allEntries);
+  }
+
+  return allEntries;
 }
 
 // Save forecast accuracy after month-end
