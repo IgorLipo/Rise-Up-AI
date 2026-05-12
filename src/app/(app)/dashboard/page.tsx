@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useActiveCompany } from "@/lib/auth/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { MonthEndForecast } from "@/lib/forecast";
@@ -210,6 +210,14 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
   const { companyId } = useActiveCompany();
   const router = useRouter();
   const [data, setData] = useState<AggregateResponse | null>(null);

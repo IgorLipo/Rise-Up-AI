@@ -37,6 +37,7 @@ export interface MonthEndForecast {
   generatedAt: string;
   catchUpEstimate: CatchUpEstimate | null;
   calculationAudit: CalculationAudit;
+  forecastMode?: ForecastMode;
 }
 
 export function daysBetween(d1: string, d2: string): number {
@@ -234,7 +235,7 @@ export function generateCatchUpEstimate(
   for (const payment of patterns.recurringExpenses) {
     if (payment.occurrences.length < 2) continue;
     if (payment.confidenceTier !== "high") continue;
-    let nextDate = payment.nextExpected;
+    const nextDate = payment.nextExpected;
     if (nextDate > statementPeriodEnd && nextDate <= horizon) {
       likelySpent += payment.typicalAmount;
     }
@@ -243,7 +244,7 @@ export function generateCatchUpEstimate(
   for (const income of patterns.recurringIncome) {
     if (income.occurrences.length < 2) continue;
     if (income.confidenceTier !== "high") continue;
-    let nextDate = income.nextExpected;
+    const nextDate = income.nextExpected;
     if (nextDate > statementPeriodEnd && nextDate <= horizon) {
       likelyReceived += income.typicalAmount;
     }
@@ -293,9 +294,9 @@ export function generateForecast(
 
   // Filter to HIGH confidence only for main forecast
   const highConfidenceIncome = patterns.recurringIncome
-    .filter((i: any) => i.confidenceTier === "high" && i.nextExpected <= monthEnd);
+    .filter((i) => i.confidenceTier === "high" && i.nextExpected <= monthEnd);
   const highConfidenceExpenses = patterns.recurringExpenses
-    .filter((e: any) => e.confidenceTier === "high" && e.nextExpected <= monthEnd);
+    .filter((e) => e.confidenceTier === "high" && e.nextExpected <= monthEnd);
 
   const remainingIncome = highConfidenceIncome.reduce((s, i) => s + i.typicalAmount, 0);
   const remainingExpenses = highConfidenceExpenses.reduce((s, e) => s + e.typicalAmount, 0);
@@ -323,16 +324,16 @@ export function generateForecast(
     : null;
 
   // Confidence: average of HIGH confidence pattern confidences
-  const confidences = [...highConfidenceIncome, ...highConfidenceExpenses].map((p: any) => p.confidence);
+  const confidences = [...highConfidenceIncome, ...highConfidenceExpenses].map((p) => p.confidence);
   const avgConfidence = confidences.length > 0
     ? confidences.reduce((s: number, c: number) => s + c, 0) / confidences.length
     : 0;
 
   // MEDIUM confidence tier for calculation audit
   const mediumConfidenceIncome = patterns.recurringIncome
-    .filter((i: any) => i.confidenceTier === "medium" && i.nextExpected <= monthEnd);
+    .filter((i) => i.confidenceTier === "medium" && i.nextExpected <= monthEnd);
   const mediumConfidenceExpenses = patterns.recurringExpenses
-    .filter((e: any) => e.confidenceTier === "medium" && e.nextExpected <= monthEnd);
+    .filter((e) => e.confidenceTier === "medium" && e.nextExpected <= monthEnd);
   const mediumIncomeTotal = mediumConfidenceIncome.reduce((s, i) => s + i.typicalAmount, 0);
   const mediumExpensesTotal = mediumConfidenceExpenses.reduce((s, e) => s + e.typicalAmount, 0);
 

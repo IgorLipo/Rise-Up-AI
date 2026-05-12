@@ -34,7 +34,7 @@ export interface VendorIntelEntry {
   confidence: number;
   source: "ai" | "user" | "system" | "keyword";
   researchedAt: string | null;
-  researchData: Record<string, any> | null;
+  researchData: Record<string, unknown> | null;
   isFirstSeen: boolean;
   direction: string | null;
 }
@@ -66,7 +66,7 @@ interface RawVendorRow {
   confidence: number;
   source: string;
   researched_at: string | null;
-  research_data: Record<string, any> | null;
+  research_data: Record<string, unknown> | null;
   is_first_seen: boolean;
   direction: string | null;
 }
@@ -249,7 +249,7 @@ export async function listVendorIntel(companyId: string): Promise<VendorIntelEnt
     .limit(1000);
 
   if (!data) return [];
-  return data.map((d: any) => mapRow(d as RawVendorRow));
+  return (data as RawVendorRow[]).map(mapRow);
 }
 
 // Get vendors flagged for review
@@ -264,7 +264,7 @@ export async function getVendorsNeedingReview(companyId: string): Promise<Vendor
     .order("updated_at", { ascending: false });
 
   if (!data) return [];
-  return data.map((d: any) => mapRow(d as RawVendorRow));
+  return (data as RawVendorRow[]).map(mapRow);
 }
 
 // Save a transaction annotation (user correction, flag, etc.)
@@ -295,8 +295,21 @@ export async function saveAnnotation(params: {
   });
 }
 
+export interface AnnotationRow {
+  id: string;
+  company_id: string;
+  user_id: string;
+  transaction_description: string;
+  merchant_normalized: string;
+  original_subcategory: string | null;
+  corrected_subcategory: string | null;
+  flag_type: string | null;
+  note: string | null;
+  created_at: string;
+}
+
 // Get all annotations for a company
-export async function listAnnotations(companyId: string): Promise<any[]> {
+export async function listAnnotations(companyId: string): Promise<AnnotationRow[]> {
   const supabase = await createServerSupabase();
 
   const { data } = await supabase
@@ -454,7 +467,7 @@ export async function researchAndCacheVendor(
     confidence: researchResult.confidence,
     source: "ai",
     researchedAt: new Date().toISOString(),
-    researchData: researchResult as any,
+    researchData: researchResult as unknown as Record<string, unknown>,
     isFirstSeen: true,
     direction: null,
   };

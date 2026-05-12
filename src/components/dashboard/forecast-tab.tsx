@@ -273,10 +273,10 @@ export function ForecastTab(props: ForecastTabProps) {
       )}
 
       {/* Low-Confidence Forecast Notice (criterion 1.7) */}
-      {(forecast as any)?.forecastMode?.isLowConfidence === true && (
+      {forecast?.forecastMode?.isLowConfidence === true && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
           <div className="font-semibold mb-1">Low-confidence forecast</div>
-          <div>{(forecast as any).forecastMode.reason}</div>
+          <div>{forecast?.forecastMode?.reason}</div>
         </div>
       )}
 

@@ -95,20 +95,25 @@ export async function recordStatement(params: {
   };
 }
 
-// List all statements for a company, newest first
-export async function listStatementHistory(companyId: string): Promise<StatementHistoryEntry[]> {
-  const supabase = await createServerSupabase();
+interface StatementHistoryRow {
+  id: string;
+  company_id: string;
+  document_id: string | null;
+  filename: string;
+  uploaded_at: string;
+  statement_period_start: string | null;
+  statement_period_end: string | null;
+  opening_balance: number | null;
+  closing_balance: number | null;
+  total_income: number | null;
+  total_expenses: number | null;
+  transaction_count: number | null;
+  net_flow: number | null;
+  parse_status: string;
+}
 
-  const { data } = await supabase
-    .from("statement_history")
-    .select("*")
-    .eq("company_id", companyId)
-    .order("uploaded_at", { ascending: false })
-    .limit(50);
-
-  if (!data) return [];
-
-  return data.map((d: any) => ({
+function mapStatementHistoryRow(d: StatementHistoryRow): StatementHistoryEntry {
+  return {
     id: d.id,
     companyId: d.company_id,
     documentId: d.document_id,
@@ -123,7 +128,23 @@ export async function listStatementHistory(companyId: string): Promise<Statement
     transactionCount: d.transaction_count ?? 0,
     netFlow: Number(d.net_flow ?? 0),
     parseStatus: d.parse_status as "ok" | "partial" | "failed",
-  }));
+  };
+}
+
+// List all statements for a company, newest first
+export async function listStatementHistory(companyId: string): Promise<StatementHistoryEntry[]> {
+  const supabase = await createServerSupabase();
+
+  const { data } = await supabase
+    .from("statement_history")
+    .select("*")
+    .eq("company_id", companyId)
+    .order("uploaded_at", { ascending: false })
+    .limit(50);
+
+  if (!data) return [];
+
+  return (data as StatementHistoryRow[]).map(mapStatementHistoryRow);
 }
 
 // Group statements by calendar month for monthly views

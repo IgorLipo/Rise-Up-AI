@@ -96,6 +96,32 @@ export async function saveVendors(entries: VendorEntry[]): Promise<void> {
   });
 }
 
+interface VendorKnowledgeRow {
+  id: string;
+  company_id: string;
+  merchant_raw: string;
+  merchant_normalized: string;
+  subcategory: string;
+  category: string;
+  confidence: number;
+  source: string;
+  metadata: Record<string, unknown> | null;
+}
+
+function mapVendorKnowledgeRow(d: VendorKnowledgeRow): VendorEntry {
+  return {
+    id: d.id,
+    companyId: d.company_id,
+    merchantRaw: d.merchant_raw,
+    merchantNormalized: d.merchant_normalized,
+    subcategory: d.subcategory as VendorEntry["subcategory"],
+    category: d.category,
+    confidence: d.confidence,
+    source: d.source as VendorEntry["source"],
+    metadata: d.metadata ?? undefined,
+  };
+}
+
 // Get all vendor knowledge for a company
 export async function listVendors(companyId: string): Promise<VendorEntry[]> {
   const supabase = await createServerSupabase();
@@ -109,17 +135,7 @@ export async function listVendors(companyId: string): Promise<VendorEntry[]> {
 
   if (!data) return [];
 
-  return data.map((d: any) => ({
-    id: d.id,
-    companyId: d.company_id,
-    merchantRaw: d.merchant_raw,
-    merchantNormalized: d.merchant_normalized,
-    subcategory: d.subcategory,
-    category: d.category,
-    confidence: d.confidence,
-    source: d.source,
-    metadata: d.metadata,
-  }));
+  return (data as VendorKnowledgeRow[]).map(mapVendorKnowledgeRow);
 }
 
 // Save a user correction
