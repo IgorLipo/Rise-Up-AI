@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { detectAllAsync } from "@/lib/detection";
-import { generateForecast } from "@/lib/forecast";
+import { generateForecast, daysBetween } from "@/lib/forecast";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { upsertVendorIntelBatch, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
@@ -305,6 +305,21 @@ export async function GET(req: NextRequest) {
     balanceValidation = validateStatementBalance(opening, credits, debits, latestClosingBalance);
   }
 
+  // ── Statement Source-of-Truth ──
+  const statementInfo = latestStmt ? {
+    openingBalance: latestStmt.accountInfo?.openingBalance ?? null as number | null,
+    totalIncome: latestStmt.transactions
+      ?.filter((t: { type: string }) => t.type === "credit")
+      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null as number | null,
+    totalExpenses: latestStmt.transactions
+      ?.filter((t: { type: string }) => t.type === "debit")
+      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null as number | null,
+    closingBalance: latestClosingBalance ?? null as number | null,
+    periodFrom: latestPeriodFrom || null as string | null,
+    periodTo: latestPeriodTo || null as string | null,
+    bankName: latestStmt.accountInfo?.bankName ?? null as string | null,
+  } : null;
+
   // For forecast start: use bank-verified balance, or null if unavailable
   const forecastStartingBalance = currentPosition.balance;
 
@@ -373,6 +388,61 @@ export async function GET(req: NextRequest) {
   const forecast = forecastStartingBalance != null
     ? generateForecast(displayPatterns, forecastStartingBalance)
     : null;
+
+  // ── Catch-Up Estimate (computed in route, not in forecast engine) ──
+  let catchUpEstimate: {
+    daysSinceStatement: number;
+    likelySpent: number;
+    likelyReceived: number;
+    estimatedBalance: number;
+    confidence: number;
+  } | null = null;
+
+  if (latestPeriodTo && latestClosingBalance != null && forecast) {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const daysSince = Math.max(0, daysBetween(latestPeriodTo, todayStr));
+    if (daysSince > 0 && daysSince <= 30) {
+      let likelySpent = 0;
+      let likelyReceived = 0;
+      for (const payment of displayPatterns.recurringExpenses) {
+        if (payment.occurrences.length < 2) continue;
+        if ((payment as any).confidenceTier !== "high") continue;
+        if ((payment as any).nextExpected > latestPeriodTo && (payment as any).nextExpected <= todayStr) {
+          likelySpent += payment.typicalAmount;
+        }
+      }
+      for (const income of displayPatterns.recurringIncome) {
+        if (income.occurrences.length < 2) continue;
+        if ((income as any).confidenceTier !== "high") continue;
+        if ((income as any).nextExpected > latestPeriodTo && (income as any).nextExpected <= todayStr) {
+          likelyReceived += income.typicalAmount;
+        }
+      }
+      const estimatedBalance = latestClosingBalance + likelyReceived - likelySpent;
+      const confidence = Math.max(0, 1.0 - (daysSince / 30) * 0.5);
+      catchUpEstimate = {
+        daysSinceStatement: daysSince,
+        likelySpent,
+        likelyReceived,
+        estimatedBalance,
+        confidence,
+      };
+    }
+  }
+
+  // ── Forecast Mode (low-confidence detection) ──
+  const forecastMode: { isLowConfidence: boolean; reason: string | null } = (() => {
+    if (!latestPeriodTo) return { isLowConfidence: false, reason: null };
+    const todayDay = new Date().getDate();
+    const lastStatementDay = new Date(latestPeriodTo).getDate();
+    if (todayDay > 25 && lastStatementDay <= 5) {
+      return {
+        isLowConfidence: true,
+        reason: "Latest statement is from early in the month and we're past the 25th. Consider uploading a newer statement.",
+      };
+    }
+    return { isLowConfidence: false, reason: null };
+  })();
 
   // ── Monthly grouping ──
   const byMonth = new Map<string, Transaction[]>();
@@ -496,9 +566,13 @@ export async function GET(req: NextRequest) {
       statementPeriodEnd: currentPosition.statementPeriodEnd,
     },
 
+    // Statement source-of-truth
+    statementInfo,
+
     // Balance validation
     balanceValidation: balanceValidation ? {
       valid: balanceValidation.valid,
+      differencePence: balanceValidation.differencePence,
       message: balanceValidation.message,
     } : null,
 
@@ -532,6 +606,9 @@ export async function GET(req: NextRequest) {
           dangerWindow: forecast.dangerWindow,
           biggestRisks: forecast.biggestRisks,
           generatedAt: forecast.generatedAt,
+          catchUpEstimate,
+          calculationAudit: forecast.calculationAudit,
+          forecastMode,
         }
       : null,
 

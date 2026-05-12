@@ -3,6 +3,24 @@ import { generateDailyForecast, type DailyForecast, type ExpectedTransaction } f
 import { calculateStatus, type ForecastStatus } from "./status-calculator";
 import { detectRisks, type RiskItem } from "./risk-detector";
 
+export interface CatchUpEstimate {
+  daysSinceStatement: number;
+  likelySpent: number;
+  likelyReceived: number;
+  estimatedBalance: number;
+  confidence: number;
+}
+
+export interface CalculationAudit {
+  latestStatementBalance: number;
+  highConfidenceIncome: number;
+  highConfidenceExpenses: number;
+  mediumConfidenceIncome: number;
+  mediumConfidenceExpenses: number;
+  predictedRangeLow: number;
+  predictedRangeHigh: number;
+}
+
 export interface MonthEndForecast {
   currentBalance: number;
   predictedMonthEnd: number;
@@ -16,9 +34,11 @@ export interface MonthEndForecast {
   dangerWindow: { from: string; to: string; lowestBalance: number } | null;
   biggestRisks: RiskItem[];
   generatedAt: string;
+  catchUpEstimate: CatchUpEstimate | null;
+  calculationAudit: CalculationAudit;
 }
 
-function daysBetween(d1: string, d2: string): number {
+export function daysBetween(d1: string, d2: string): number {
   return Math.round((new Date(d2).getTime() - new Date(d1).getTime()) / 86400000);
 }
 
@@ -233,6 +253,14 @@ export function generateForecast(
     ? confidences.reduce((s: number, c: number) => s + c, 0) / confidences.length
     : 0;
 
+  // MEDIUM confidence tier for calculation audit
+  const mediumConfidenceIncome = patterns.recurringIncome
+    .filter((i: any) => i.confidenceTier === "medium" && i.nextExpected <= monthEnd);
+  const mediumConfidenceExpenses = patterns.recurringExpenses
+    .filter((e: any) => e.confidenceTier === "medium" && e.nextExpected <= monthEnd);
+  const mediumIncomeTotal = mediumConfidenceIncome.reduce((s, i) => s + i.typicalAmount, 0);
+  const mediumExpensesTotal = mediumConfidenceExpenses.reduce((s, e) => s + e.typicalAmount, 0);
+
   return {
     currentBalance,
     predictedMonthEnd: daily[daily.length - 1]?.closingBalance ?? currentBalance,
@@ -246,6 +274,16 @@ export function generateForecast(
     dangerWindow,
     biggestRisks: risks,
     generatedAt: new Date().toISOString(),
+    calculationAudit: {
+      latestStatementBalance: currentBalance,
+      highConfidenceIncome: remainingIncome,
+      highConfidenceExpenses: remainingExpenses,
+      mediumConfidenceIncome: mediumIncomeTotal,
+      mediumConfidenceExpenses: mediumExpensesTotal,
+      predictedRangeLow: currentBalance + remainingIncome - remainingExpenses,
+      predictedRangeHigh: currentBalance + remainingIncome + mediumIncomeTotal - remainingExpenses - mediumExpensesTotal,
+    },
+    catchUpEstimate: null, // populated by the aggregate route, not here
   };
 }
 
