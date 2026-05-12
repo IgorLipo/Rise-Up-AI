@@ -2,12 +2,13 @@
 
 ## Overview
 
-This roadmap fixes the cashflow forecasting app's core logic (Phase 1) then restructures the dashboard (Phase 2). The root cause is a single bug -- `currentBalance` displays accumulated net flow instead of the latest statement closing balance -- which cascades into incorrect forecasts, polluted recurring patterns, and misleading risk messages. Phase 1 corrects the data pipeline end-to-end. Phase 2 presents the corrected data through a clear, tabbed dashboard with confidence transparency and actionable insights. Every requirement maps to exactly one phase.
+This roadmap fixes the cashflow forecasting app's core logic (Phase 1), restructures the dashboard (Phase 2), and makes the forecast trustworthy with correct transactions and one-off logic (Phase 3). The root cause started as a single bug -- `currentBalance` displays accumulated net flow instead of the latest statement closing balance -- which cascaded into incorrect forecasts, polluted recurring patterns, and misleading risk messages. Phase 1 corrected the data pipeline end-to-end. Phase 2 presented the corrected data through a clear, tabbed dashboard. Phase 3 makes everything trustworthy and user-friendly.
 
 ## Phases
 
 - [x] **Phase 1: Backend Logic Fixes** - Correct balance extraction, forecast engine, categorization, suspicious detection, risk messages, and upload recalculation pipeline (FOR-04 Modes A/C deferred to Phase 1b)
 - [ ] **Phase 2: Dashboard UI & Experience** - Restructure dashboard with tabs, daily forecast readability, month cards, review queue, insight cards, status display, and action recommendations
+- [ ] **Phase 3: Forecast Trust & Transactions Fix** - Make Forecast page trustworthy with source-of-truth, validation, audit trail. Fix Transactions with search, drill-down, correct categorization, selectable text. Rebuild One-Off logic so repeats are never one-off.
 
 ## Phase Details
 
@@ -21,7 +22,8 @@ This roadmap fixes the cashflow forecasting app's core logic (Phase 1) then rest
   3. User sees known vendors correctly categorized (council tax, car-expenses, subscriptions/software, property-management) and business income correctly classified as such, never flagged as personal expenses
   4. User sees specific, actionable risk messages naming vendors, amounts, dates, and resolution timing (e.g., "Balance expected to remain below threshold until Tranquil Accommodation payments arrive around 23-24 May")
   5. After uploading a statement, user sees a complete recalculation summary showing imported period, latest balance, new vendors learned, updated patterns, potential personal expenses, and updated forecast
-**Plans**: TBD
+**Plans**: 1 plan
+- [x] 01-01-PLAN.md — Backend Logic Fixes (10 tasks)
 
 #### Phase 1 Build Order
 
@@ -56,9 +58,29 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
 - [ ] 02-03-PLAN.md — Review Queue + Transactions + Assembly (actionable review items, RecommendedActions, final page.tsx wiring)
 **UI hint**: yes
 
+### Phase 3: Forecast Trust & Transactions Fix
+**Goal**: Make the Forecast page trustworthy, explainable, and validated against the latest uploaded statement. Fix Transactions to be understandable, copyable, correctly categorized, and properly searchable/drillable. Rebuild One-Off logic so repeated transactions are never left as one-off.
+**Depends on**: Phase 1, Phase 2
+**Requirements**: P3-01, P3-02, P3-03, P3-04, P3-05, P3-06, P3-07, P3-08, P3-09, P3-10, P3-11, P3-12, P3-13, P3-14, P3-15, P3-16, P3-17, P3-18, P3-19, P3-20, P3-21, P3-22, P3-23
+**Success Criteria** (what must be TRUE):
+  1. User sees statement source-of-truth block with balance validation formula (green checkmark or red warning) directly in the forecast tab
+  2. User sees forecast calculation audit trail showing exactly how the predicted month-end number was calculated, with HIGH and MEDIUM confidence tier breakdowns
+  3. User sees correct status badges: Risk for temporary negative (recovers by month-end), Critical only when ending the month negative
+  4. User sees opening AND closing balances for each daily forecast day, with catch-up estimate visibility and low-confidence forecast notices
+  5. Transaction text is selectable and copyable everywhere, each transaction has one primary category (mutually exclusive), and known misclassifications (Costa Coffee, Apple, Amazon) are fixed
+  6. Transactions tab has search input, clickable category drill-down, View all toggle, and readable row format with Date, Merchant, Category badge, color-coded Amount
+  7. Vendors appearing 2+ times across any time period are never marked as one-off — one-off means exactly one appearance in entire transaction history
+  8. Unknown vendors are researched via DeepSeek v4 Flash and cached in vendor_intel; first-seen vendors flagged distinctly from one-offs; income-side one-off detection works same as expense-side
+  9. Clicking a vendor in Recurring or One-Off lists shows occurrence drill-down with dates, amounts, trend; backfill script populates vendor_intel for existing data
+**Plans**: 3 plans (2 waves)
+- [ ] 03-01-PLAN.md — Part 1: Forecast Trust & Validation (8 criteria: statement source-of-truth, balance validation, audit trail, status fix, daily opening/closing, catch-up estimate, forecast mode rules, hero delta)
+- [ ] 03-02-PLAN.md — Part 2: Transactions Fix (6 criteria: text selection, primary category, classification fixes, category list rebuild, search & drill-down, row readability)
+- [ ] 03-03-PLAN.md — Part 3: One-Off Logic Rebuild (9 criteria: repeat detection, one-off definition, vendor research, first-seen flag, vendor look-ahead, occurrence drill-down, vendor_intel population, backfill script, income-side detection)
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Logic Fixes | 1/1 | 10/10 tasks complete | 2026-05-11 |
-| 2. Dashboard UI & Experience | 0/3 | Not started | - |
+| 2. Dashboard UI & Experience | 2/3 | 6/9 tasks complete | 2026-05-11 |
+| 3. Forecast Trust & Transactions Fix | 0/3 | Not started | - |
