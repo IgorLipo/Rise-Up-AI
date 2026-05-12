@@ -7,7 +7,7 @@ This roadmap fixes the cashflow forecasting app's core logic (Phase 1), restruct
 ## Phases
 
 - [x] **Phase 1: Backend Logic Fixes** - Correct balance extraction, forecast engine, categorization, suspicious detection, risk messages, and upload recalculation pipeline (FOR-04 Modes A/C deferred to Phase 1b)
-- [ ] **Phase 2: Dashboard UI & Experience** - Restructure dashboard with tabs, daily forecast readability, month cards, review queue, insight cards, status display, and action recommendations
+- [x] **Phase 2: Dashboard UI & Experience** - Restructure dashboard with tabs, daily forecast readability, month cards, review queue, insight cards, status display, and action recommendations (completed 2026-05-12, verified 13/13 must-haves)
 - [x] **Phase 3: Forecast Trust & Transactions Fix** - Make Forecast page trustworthy with source-of-truth, validation, audit trail. Fix Transactions with search, drill-down, correct categorization, selectable text. Rebuild One-Off logic so repeats are never one-off. (completed 2026-05-12)
 
 ## Phase Details
@@ -82,5 +82,5 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Logic Fixes | 1/1 | 10/10 tasks complete | 2026-05-11 |
-| 2. Dashboard UI & Experience | 2/3 | 6/9 tasks complete | 2026-05-11 |
-| 3. Forecast Trust & Transactions Fix | 0/3 | Not started | - |
+| 2. Dashboard UI & Experience | 3/3 | 9/9 tasks complete | 2026-05-12 |
+| 3. Forecast Trust & Transactions Fix | 3/3 | 8/8 tasks complete | 2026-05-12 |
