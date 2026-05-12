@@ -128,16 +128,37 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
     }
 
     const { interval, consistency } = classifyInterval(gaps);
+
+    // Amount analysis (needed early for irregular path as well)
+    const amounts = sorted.map((t) => t.amount);
+
     if (interval === "irregular") {
-      for (const tx of sorted) {
-        if (tx.type === "credit") oneOffIncome.push(tx);
-        else oneOffExpenses.push(tx);
+      // Irregular BUT has 2+ occurrences → still NOT one-off.
+      // Create a RecurringPayment with "irregular" interval and low confidence.
+      const mean = amounts.reduce((s, a) => s + a, 0) / amounts.length;
+      const last = sorted[sorted.length - 1];
+
+      const payment: RecurringPayment = {
+        id: crypto.randomUUID(),
+        merchant: coreMerchant(sorted[0].description),
+        normalizedDescription: sorted[0].description,
+        interval: "irregular",
+        typicalAmount: mean,
+        amountVariance: 0,
+        lastOccurrence: last.date,
+        nextExpected: last.date, // can't predict irregular
+        confidence: 0.1,
+        confidenceTier: "low",
+        occurrences: sorted.map((t) => ({ date: t.date, amount: t.amount })),
+      };
+
+      if (sorted[0].type === "credit") {
+        recurringIncome.push(payment);
+      } else {
+        recurringExpenses.push(payment);
       }
       continue;
     }
-
-    // Amount analysis
-    const amounts = sorted.map((t) => t.amount);
     const mean = amounts.reduce((s, a) => s + a, 0) / amounts.length;
     const variance = amounts.reduce((s, a) => s + Math.pow(a - mean, 2), 0) / amounts.length;
     const cv = Math.sqrt(variance) / mean;

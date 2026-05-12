@@ -330,6 +330,8 @@ export async function GET(req: NextRequest) {
   let displayRecurringVendors = learningReport.recurringCandidates;
   let displaySuspiciousVendors = learningReport.suspiciousCandidates;
   let displayOneOffCandidates = learningReport.oneOffCandidates;
+  let displayOneOffIncomeCandidates = learningReport.oneOffIncomeCandidates;
+  let displayOneOffExpenseCandidates = learningReport.oneOffExpenseCandidates;
   let displayCrossMonthInsights = learningReport.crossMonthInsights;
   let displayTotalVendors = learningReport.totalVendors;
 
@@ -373,6 +375,12 @@ export async function GET(req: NextRequest) {
       filteredCoreKeys.has(v.canonicalName.toLowerCase())
     );
     displayOneOffCandidates = learningReport.oneOffCandidates.filter((v) =>
+      filteredCoreKeys.has(v.toLowerCase())
+    );
+    displayOneOffIncomeCandidates = learningReport.oneOffIncomeCandidates.filter((v) =>
+      filteredCoreKeys.has(v.toLowerCase())
+    );
+    displayOneOffExpenseCandidates = learningReport.oneOffExpenseCandidates.filter((v) =>
       filteredCoreKeys.has(v.toLowerCase())
     );
     displayTotalVendors = displayRecurringVendors.length + displaySuspiciousVendors.length + displayOneOffCandidates.length;
@@ -659,6 +667,8 @@ export async function GET(req: NextRequest) {
       recurring: recurringVendors,
       suspicious: suspiciousVendors,
       oneOff: displayOneOffCandidates,
+      oneOffIncome: displayOneOffIncomeCandidates,
+      oneOffExpenses: displayOneOffExpenseCandidates,
     },
 
     // Cross-month insights

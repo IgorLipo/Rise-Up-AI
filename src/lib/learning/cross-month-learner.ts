@@ -29,6 +29,9 @@ interface VendorLearning {
   typicalAmount: number;
   amountRange: { min: number; max: number };
   amountVariance: number;
+  direction: "income" | "expense" | "mixed";
+  incomeAmounts: number[];
+  expenseAmounts: number[];
 }
 
 interface CrossMonthInsight {
@@ -45,6 +48,8 @@ export interface LearningReport {
   vendors: Map<string, VendorLearning>;
   recurringCandidates: VendorLearning[];
   oneOffCandidates: string[];
+  oneOffIncomeCandidates: string[];
+  oneOffExpenseCandidates: string[];
   crossMonthInsights: CrossMonthInsight[];
   suspiciousCandidates: VendorLearning[];
   totalMonths: number;
@@ -96,6 +101,9 @@ export function learnFromHistory(
         typicalAmount: tx.amount,
         amountRange: { min: tx.amount, max: tx.amount },
         amountVariance: 0,
+        direction: tx.type === "credit" ? "income" : "expense",
+        incomeAmounts: tx.type === "credit" ? [tx.amount] : [],
+        expenseAmounts: tx.type === "debit" ? [tx.amount] : [],
       });
     } else {
       const v = vendorMap.get(core)!;
@@ -111,6 +119,13 @@ export function learnFromHistory(
       v.firstSeen = tx.date < v.firstSeen ? tx.date : v.firstSeen;
       v.appearanceCount++;
 
+      // Track income/expense amounts separately
+      if (tx.type === "credit") {
+        v.incomeAmounts.push(tx.amount);
+      } else {
+        v.expenseAmounts.push(tx.amount);
+      }
+
       // Recalculate amount stats
       const avg = v.amounts.reduce((s, a) => s + a, 0) / v.amounts.length;
       v.typicalAmount = avg;
@@ -121,15 +136,31 @@ export function learnFromHistory(
     }
   }
 
+  // Finalize direction for all vendors (depends on all transactions)
+  for (const vendor of vendorMap.values()) {
+    vendor.direction = vendor.incomeAmounts.length > 0 && vendor.expenseAmounts.length > 0 ? "mixed"
+      : vendor.incomeAmounts.length > 0 ? "income"
+      : "expense";
+  }
+
   // Classify recurrence
   const recurringCandidates: VendorLearning[] = [];
   const oneOffCandidates: string[] = [];
+  const oneOffIncomeCandidates: string[] = [];
+  const oneOffExpenseCandidates: string[] = [];
   const suspiciousCandidates: VendorLearning[] = [];
 
   for (const vendor of vendorMap.values()) {
     // Only found once = one-off candidate
     if (vendor.appearanceCount < 2) {
       oneOffCandidates.push(vendor.canonicalName);
+      if (vendor.direction === "income") {
+        oneOffIncomeCandidates.push(vendor.canonicalName);
+      } else if (vendor.direction === "expense") {
+        oneOffExpenseCandidates.push(vendor.canonicalName);
+      } else {
+        oneOffExpenseCandidates.push(vendor.canonicalName);
+      }
       continue;
     }
 
@@ -268,6 +299,8 @@ export function learnFromHistory(
     vendors: vendorMap,
     recurringCandidates,
     oneOffCandidates,
+    oneOffIncomeCandidates,
+    oneOffExpenseCandidates,
     crossMonthInsights,
     suspiciousCandidates,
     totalMonths: byMonth.length,
