@@ -517,6 +517,19 @@ export async function GET(req: NextRequest) {
     }))
     .sort((a, b) => b.total - a.total);
 
+  // ── Helper: compute amount trend from occurrence data ──
+  function computeAmountTrend(occurrences: { date: string; amount: number }[]): string {
+    if (occurrences.length < 3) return "insufficient-data";
+    const firstHalf = occurrences.slice(0, Math.ceil(occurrences.length / 2));
+    const secondHalf = occurrences.slice(Math.ceil(occurrences.length / 2));
+    const firstAvg = firstHalf.reduce((s, o) => s + o.amount, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((s, o) => s + o.amount, 0) / secondHalf.length;
+    const changePct = firstAvg > 0 ? (secondAvg - firstAvg) / firstAvg : 0;
+    if (changePct > 0.1) return "increasing";
+    if (changePct < -0.1) return "decreasing";
+    return "stable";
+  }
+
   // ── Vendor Learning Summaries ──
   const recurringVendors = displayRecurringVendors.map((v) => {
     let confidence = 0.4;
@@ -527,6 +540,12 @@ export async function GET(req: NextRequest) {
     confidence = Math.min(1, confidence);
 
     const intelEntry = existingVendorMap.get(v.canonicalName.toLowerCase());
+    const occurrences = v.dates.map((date, i) => ({
+      date,
+      amount: v.amounts[i] ?? 0,
+      description: v.allDescriptions[i] ?? "",
+    })).sort((a, b) => b.date.localeCompare(a.date));
+
     return {
       canonicalName: v.canonicalName,
       subcategory: v.subcategory,
@@ -541,6 +560,9 @@ export async function GET(req: NextRequest) {
       amountRange: v.amountRange,
       isFirstSeen: intelEntry?.isFirstSeen ?? false,
       direction: v.direction ?? "expense",
+      occurrences,
+      monthlyFrequency: (v.appearanceCount / Math.max(1, v.months.length)).toFixed(1),
+      amountTrend: computeAmountTrend(occurrences),
     };
   });
 
@@ -672,9 +694,36 @@ export async function GET(req: NextRequest) {
       total: displayTotalVendors,
       recurring: recurringVendors,
       suspicious: suspiciousVendors,
-      oneOff: displayOneOffCandidates,
-      oneOffIncome: displayOneOffIncomeCandidates,
-      oneOffExpenses: displayOneOffExpenseCandidates,
+      oneOff: displayOneOffCandidates.map((name) => {
+        const vendor = learningReport.vendors.get(name.toLowerCase());
+        return {
+          canonicalName: name,
+          date: vendor?.dates[0] ?? "",
+          amount: vendor?.amounts[0] ?? 0,
+          description: vendor?.allDescriptions[0] ?? name,
+          subcategory: vendor?.subcategory ?? "one-off",
+        };
+      }),
+      oneOffIncome: displayOneOffIncomeCandidates.map((name) => {
+        const vendor = learningReport.vendors.get(name.toLowerCase());
+        return {
+          canonicalName: name,
+          date: vendor?.dates[0] ?? "",
+          amount: vendor?.amounts[0] ?? 0,
+          description: vendor?.allDescriptions[0] ?? name,
+          subcategory: vendor?.subcategory ?? "one-off",
+        };
+      }),
+      oneOffExpenses: displayOneOffExpenseCandidates.map((name) => {
+        const vendor = learningReport.vendors.get(name.toLowerCase());
+        return {
+          canonicalName: name,
+          date: vendor?.dates[0] ?? "",
+          amount: vendor?.amounts[0] ?? 0,
+          description: vendor?.allDescriptions[0] ?? name,
+          subcategory: vendor?.subcategory ?? "one-off",
+        };
+      }),
     },
 
     // Cross-month insights

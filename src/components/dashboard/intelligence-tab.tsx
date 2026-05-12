@@ -6,21 +6,42 @@ import { InsightDetailPanel } from "@/components/dashboard/insight-detail-panel"
 import { formatCurrency } from "@/lib/utils";
 import type { InsightDetail } from "@/components/dashboard/insight-detail-panel";
 
+interface VendorOccurrence {
+  date: string;
+  amount: number;
+  description: string;
+}
+
+interface VendorWithOccurrences {
+  canonicalName: string;
+  subcategory: string;
+  category: string;
+  typicalAmount: number;
+  recurrencePattern: string | null;
+  appearanceCount: number;
+  monthsSeen: number;
+  firstSeen: string;
+  lastSeen: string;
+  amountRange: { min: number; max: number };
+  occurrences?: VendorOccurrence[];
+  monthlyFrequency?: string;
+  amountTrend?: string;
+  isFirstSeen?: boolean;
+  direction?: string;
+}
+
+interface OneOffVendor {
+  canonicalName: string;
+  date: string;
+  amount: number;
+  description: string;
+  subcategory: string;
+}
+
 interface IntelligenceTabProps {
   vendors: {
     total: number;
-    recurring: Array<{
-      canonicalName: string;
-      subcategory: string;
-      category: string;
-      typicalAmount: number;
-      recurrencePattern: string | null;
-      appearanceCount: number;
-      monthsSeen: number;
-      firstSeen: string;
-      lastSeen: string;
-      amountRange: { min: number; max: number };
-    }>;
+    recurring: VendorWithOccurrences[];
     suspicious: Array<{
       canonicalName: string;
       subcategory: string;
@@ -28,7 +49,9 @@ interface IntelligenceTabProps {
       appearanceCount: number;
       reason: string;
     }>;
-    oneOff: string[];
+    oneOff: OneOffVendor[];
+    oneOffIncome?: OneOffVendor[];
+    oneOffExpenses?: OneOffVendor[];
   };
   crossMonthInsights: Array<{
     vendor: string;
@@ -93,9 +116,14 @@ const INSIGHT_TYPE_LABELS: Record<string, string> = {
   became_recurring: "Now recurring",
 };
 
+function categoryLabel(subcategory: string): string {
+  return subcategory.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function IntelligenceTab(props: IntelligenceTabProps) {
   const { vendors, crossMonthInsights, patterns, entities, newVendors } = props;
   const [selectedInsight, setSelectedInsight] = useState<InsightDetail | null>(null);
+  const [selectedVendor, setSelectedVendor] = useState<VendorWithOccurrences | OneOffVendor | null>(null);
 
   return (
     <div className="space-y-5">
@@ -105,8 +133,87 @@ export function IntelligenceTab(props: IntelligenceTabProps) {
         recurring={vendors.recurring}
         suspicious={vendors.suspicious}
         oneOff={vendors.oneOff}
+        oneOffIncome={vendors.oneOffIncome}
+        oneOffExpenses={vendors.oneOffExpenses}
         crossMonthInsights={crossMonthInsights}
+        onVendorClick={(vendor) => setSelectedVendor(vendor)}
       />
+
+      {/* Vendor drill-down panel */}
+      {selectedVendor && (
+        <div className="mt-5 bg-white border border-zinc-200 rounded-xl p-4 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-zinc-900 capitalize">
+                {selectedVendor.canonicalName}
+              </h3>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600">
+                {categoryLabel(selectedVendor.subcategory)}
+              </span>
+              {"isFirstSeen" in selectedVendor && selectedVendor.isFirstSeen && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
+                  New vendor
+                </span>
+              )}
+            </div>
+            <button onClick={() => setSelectedVendor(null)} className="text-zinc-400 hover:text-zinc-600 text-lg leading-none">&times;</button>
+          </div>
+
+          {/* First-seen banner */}
+          {"isFirstSeen" in selectedVendor && selectedVendor.isFirstSeen && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+              New vendor — classification uncertain. Will refine as more statements are processed.
+            </div>
+          )}
+
+          {/* Stats grid */}
+          {"firstSeen" in selectedVendor ? (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-xs text-zinc-500">First seen <span className="block font-mono text-zinc-900 mt-0.5">{selectedVendor.firstSeen}</span></div>
+              <div className="text-xs text-zinc-500">Last seen <span className="block font-mono text-zinc-900 mt-0.5">{selectedVendor.lastSeen}</span></div>
+              <div className="text-xs text-zinc-500">Appearances <span className="block font-mono text-zinc-900 mt-0.5">{selectedVendor.appearanceCount} ({selectedVendor.monthsSeen} months)</span></div>
+              <div className="text-xs text-zinc-500">Frequency <span className="block font-mono text-zinc-900 mt-0.5">{selectedVendor.monthlyFrequency ?? "0"}/month</span></div>
+              <div className="text-xs text-zinc-500">Trend <span className="block font-mono text-zinc-900 mt-0.5">{selectedVendor.amountTrend ?? "N/A"}</span></div>
+              <div className="text-xs text-zinc-500">Direction <span className="block font-mono text-zinc-900 mt-0.5">{selectedVendor.direction ?? "N/A"}</span></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-xs text-zinc-500">Date <span className="block font-mono text-zinc-900 mt-0.5">{"date" in selectedVendor ? selectedVendor.date : "N/A"}</span></div>
+              <div className="text-xs text-zinc-500">Amount <span className={`block font-mono mt-0.5 ${"amount" in selectedVendor && selectedVendor.amount >= 0 ? "text-emerald-600" : "text-red-500"}`}>{formatCurrency(Math.abs("amount" in selectedVendor ? selectedVendor.amount : 0))}</span></div>
+            </div>
+          )}
+
+          {/* Occurrence table (for recurring vendors) */}
+          {"occurrences" in selectedVendor && selectedVendor.occurrences && selectedVendor.occurrences.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-zinc-900 uppercase tracking-wider mb-2">All occurrences</h4>
+              <div className="max-h-64 overflow-y-auto border border-zinc-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50 sticky top-0">
+                    <tr>
+                      <th className="text-left py-2 px-3 text-zinc-400 font-medium">Date</th>
+                      <th className="text-left py-2 px-3 text-zinc-400 font-medium">Description</th>
+                      <th className="text-right py-2 px-3 text-zinc-400 font-medium">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedVendor.occurrences.map((occ, i) => (
+                      <tr key={i} className="border-t border-zinc-100">
+                        <td className="py-1.5 px-3 font-mono text-zinc-500">{occ.date}</td>
+                        <td className="py-1.5 px-3 text-zinc-700 max-w-[200px] truncate">{occ.description}</td>
+                        <td className={`py-1.5 px-3 font-mono text-right ${occ.amount >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                          {occ.amount >= 0 ? "+" : "-"}{formatCurrency(Math.abs(occ.amount))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Cross-month insights as clickable cards */}
       <div>

@@ -134,6 +134,11 @@ interface AggregateResponse {
       firstSeen: string;
       lastSeen: string;
       amountRange: { min: number; max: number };
+      occurrences?: Array<{ date: string; amount: number; description: string }>;
+      monthlyFrequency?: string;
+      amountTrend?: string;
+      isFirstSeen?: boolean;
+      direction?: string;
     }>;
     suspicious: Array<{
       canonicalName: string;
@@ -142,7 +147,27 @@ interface AggregateResponse {
       appearanceCount: number;
       reason: string;
     }>;
-    oneOff: string[];
+    oneOff: Array<{
+      canonicalName: string;
+      date: string;
+      amount: number;
+      description: string;
+      subcategory: string;
+    }>;
+    oneOffIncome?: Array<{
+      canonicalName: string;
+      date: string;
+      amount: number;
+      description: string;
+      subcategory: string;
+    }>;
+    oneOffExpenses?: Array<{
+      canonicalName: string;
+      date: string;
+      amount: number;
+      description: string;
+      subcategory: string;
+    }>;
   };
   crossMonthInsights: Array<{
     vendor: string;

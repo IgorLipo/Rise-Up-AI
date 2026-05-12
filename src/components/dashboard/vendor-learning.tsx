@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 
+interface VendorOccurrence {
+  date: string;
+  amount: number;
+  description: string;
+}
+
 interface RecurringVendor {
   canonicalName: string;
   subcategory: string;
@@ -14,6 +20,11 @@ interface RecurringVendor {
   firstSeen: string;
   lastSeen: string;
   amountRange: { min: number; max: number };
+  occurrences?: VendorOccurrence[];
+  monthlyFrequency?: string;
+  amountTrend?: string;
+  isFirstSeen?: boolean;
+  direction?: string;
 }
 
 interface SuspiciousVendor {
@@ -22,6 +33,14 @@ interface SuspiciousVendor {
   typicalAmount: number;
   appearanceCount: number;
   reason: string;
+}
+
+interface OneOffVendor {
+  canonicalName: string;
+  date: string;
+  amount: number;
+  description: string;
+  subcategory: string;
 }
 
 interface CrossMonthInsight {
@@ -36,8 +55,11 @@ interface Props {
   totalVendors: number;
   recurring: RecurringVendor[];
   suspicious: SuspiciousVendor[];
-  oneOff: string[];
+  oneOff: OneOffVendor[];
+  oneOffIncome?: OneOffVendor[];
+  oneOffExpenses?: OneOffVendor[];
   crossMonthInsights: CrossMonthInsight[];
+  onVendorClick?: (vendor: RecurringVendor | OneOffVendor) => void;
 }
 
 const INSIGHT_ICONS: Record<string, string> = {
@@ -48,8 +70,8 @@ const INSIGHT_ICONS: Record<string, string> = {
   became_recurring: "Recur",
 };
 
-export function VendorLearning({ totalVendors, recurring, suspicious, oneOff, crossMonthInsights }: Props) {
-  const [tab, setTab] = useState<"recurring" | "insights" | "suspicious">("recurring");
+export function VendorLearning({ totalVendors, recurring, suspicious, oneOff, oneOffIncome, oneOffExpenses, crossMonthInsights, onVendorClick }: Props) {
+  const [tab, setTab] = useState<"recurring" | "insights" | "suspicious" | "oneoff">("recurring");
 
   return (
     <div>
@@ -62,7 +84,7 @@ export function VendorLearning({ totalVendors, recurring, suspicious, oneOff, cr
 
       {/* Tabs */}
       <div className="flex rounded-lg bg-zinc-100 p-0.5 mb-3">
-        {(["recurring", "insights", "suspicious"] as const).map((t) => (
+        {(["recurring", "insights", "suspicious", "oneoff"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -72,7 +94,10 @@ export function VendorLearning({ totalVendors, recurring, suspicious, oneOff, cr
                 : "text-zinc-500 hover:text-zinc-700"
             }`}
           >
-            {t === "recurring" ? `Recurring (${recurring.length})` : t === "insights" ? `Insights (${crossMonthInsights.length})` : `Flags (${suspicious.length})`}
+            {t === "recurring" ? `Recurring (${recurring.length})`
+              : t === "insights" ? `Insights (${crossMonthInsights.length})`
+              : t === "suspicious" ? `Flags (${suspicious.length})`
+              : `One-off (${oneOff.length})`}
           </button>
         ))}
       </div>
@@ -84,7 +109,11 @@ export function VendorLearning({ totalVendors, recurring, suspicious, oneOff, cr
             <p className="text-xs text-zinc-400 py-4 text-center">No recurring patterns detected yet. Upload more statements.</p>
           ) : (
             recurring.map((v) => (
-              <div key={v.canonicalName} className="bg-white border border-zinc-200 rounded-lg p-3">
+              <div
+                key={v.canonicalName}
+                className={`bg-white border border-zinc-200 rounded-lg p-3 ${onVendorClick ? "cursor-pointer hover:border-zinc-300 hover:shadow-sm transition-all" : ""}`}
+                onClick={() => onVendorClick?.(v)}
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium text-zinc-900 capitalize">{v.canonicalName}</div>
@@ -146,6 +175,38 @@ export function VendorLearning({ totalVendors, recurring, suspicious, oneOff, cr
                   <div className="text-right">
                     <div className="text-sm font-mono text-zinc-900">{formatCurrency(v.typicalAmount)}</div>
                     <div className="text-xs text-zinc-400">{v.appearanceCount}x</div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* One-off vendors */}
+      {tab === "oneoff" && (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto">
+          {oneOff.length === 0 ? (
+            <p className="text-xs text-zinc-400 py-4 text-center">No one-off vendors found.</p>
+          ) : (
+            oneOff.map((v) => (
+              <div
+                key={v.canonicalName}
+                className={`bg-white border border-zinc-200 rounded-lg p-3 ${onVendorClick ? "cursor-pointer hover:border-zinc-300 hover:shadow-sm transition-all" : ""}`}
+                onClick={() => onVendorClick?.(v)}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-zinc-900 capitalize">{v.canonicalName}</div>
+                    <div className="text-xs text-zinc-400 mt-0.5">
+                      {v.subcategory} · {v.date}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-sm font-mono ${v.amount >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      {v.amount >= 0 ? "+" : "-"}{formatCurrency(Math.abs(v.amount))}
+                    </div>
+                    <div className="text-xs text-zinc-400 truncate max-w-[150px]">{v.description}</div>
                   </div>
                 </div>
               </div>
