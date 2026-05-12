@@ -74,7 +74,7 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
   9. Clicking a vendor in Recurring or One-Off lists shows occurrence drill-down with dates, amounts, trend; backfill script populates vendor_intel for existing data
 **Plans**: 3 plans (2 waves)
 - [x] 03-01-PLAN.md — Part 1: Forecast Trust & Validation (8 criteria: statement source-of-truth, balance validation, audit trail, status fix, daily opening/closing, catch-up estimate, forecast mode rules, hero delta)
-- [ ] 03-02-PLAN.md — Part 2: Transactions Fix (6 criteria: text selection, primary category, classification fixes, category list rebuild, search & drill-down, row readability)
+- [x] 03-02-PLAN.md — Part 2: Transactions Fix (6 criteria: text selection, primary category, classification fixes, category list rebuild, search & drill-down, row readability)
 - [ ] 03-03-PLAN.md — Part 3: One-Off Logic Rebuild (9 criteria: repeat detection, one-off definition, vendor research, first-seen flag, vendor look-ahead, occurrence drill-down, vendor_intel population, backfill script, income-side detection)
 
 ## Progress
