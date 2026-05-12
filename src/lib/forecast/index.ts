@@ -1,4 +1,5 @@
 import type { EnrichedDetectedPatterns } from "@/lib/detection";
+import type { RecurringPayment } from "@/lib/detection/pattern-detector";
 import { generateDailyForecast, type DailyForecast, type ExpectedTransaction } from "./daily-forecaster";
 import { calculateStatus, type ForecastStatus } from "./status-calculator";
 import { detectRisks, type RiskItem } from "./risk-detector";
@@ -198,6 +199,80 @@ export function catchUpBalance(
     daysProjected: daysSince,
     isEstimated: true,
   };
+}
+
+export interface ForecastMode {
+  isLowConfidence: boolean;
+  reason: string | null;
+}
+
+function computeAverageGapForPayment(payment: RecurringPayment): number {
+  if (payment.occurrences.length < 2) return 30;
+  const gaps: number[] = [];
+  for (let i = 1; i < payment.occurrences.length; i++) {
+    gaps.push(daysBetween(payment.occurrences[i - 1].date, payment.occurrences[i].date));
+  }
+  return Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length);
+}
+
+export function generateCatchUpEstimate(
+  patterns: EnrichedDetectedPatterns,
+  latestClosingBalance: number,
+  statementPeriodEnd: string,
+  today?: string
+): CatchUpEstimate | null {
+  const todayStr = today ?? new Date().toISOString().split("T")[0];
+  if (!statementPeriodEnd || statementPeriodEnd >= todayStr) return null;
+  const daysSince = daysBetween(statementPeriodEnd, todayStr);
+  if (daysSince <= 0) return null;
+  if (daysSince > 30) return null; // too stale
+
+  let likelySpent = 0;
+  let likelyReceived = 0;
+  const horizon = todayStr;
+
+  for (const payment of patterns.recurringExpenses) {
+    if (payment.occurrences.length < 2) continue;
+    if (payment.confidenceTier !== "high") continue;
+    let nextDate = payment.nextExpected;
+    if (nextDate > statementPeriodEnd && nextDate <= horizon) {
+      likelySpent += payment.typicalAmount;
+    }
+  }
+
+  for (const income of patterns.recurringIncome) {
+    if (income.occurrences.length < 2) continue;
+    if (income.confidenceTier !== "high") continue;
+    let nextDate = income.nextExpected;
+    if (nextDate > statementPeriodEnd && nextDate <= horizon) {
+      likelyReceived += income.typicalAmount;
+    }
+  }
+
+  const estimatedBalance = latestClosingBalance + likelyReceived - likelySpent;
+  const confidence = Math.max(0, 1.0 - (daysSince / 30) * 0.5);
+
+  return {
+    daysSinceStatement: daysSince,
+    likelySpent,
+    likelyReceived,
+    estimatedBalance,
+    confidence,
+  };
+}
+
+export function getForecastMode(statementPeriodEnd: string | null, today?: string): ForecastMode {
+  const todayStr = today ?? new Date().toISOString().split("T")[0];
+  if (!statementPeriodEnd) return { isLowConfidence: false, reason: null };
+  const todayDay = new Date(todayStr).getDate();
+  const lastStatementDay = new Date(statementPeriodEnd).getDate();
+  if (todayDay > 25 && lastStatementDay <= 5) {
+    return {
+      isLowConfidence: true,
+      reason: "Latest statement is from early in the month and we're past the 25th. Consider uploading a newer statement for higher-confidence forecasts.",
+    };
+  }
+  return { isLowConfidence: false, reason: null };
 }
 
 function formatDate(d: Date): string {

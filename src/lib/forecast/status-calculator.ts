@@ -15,21 +15,22 @@ export function calculateStatus(
   const lowestBalance = Math.min(...dailyForecast.map((d) => d.closingBalance));
   const monthEndBalance = dailyForecast[dailyForecast.length - 1].closingBalance;
 
-  // Critical: balance goes negative AND no income before that happens
-  if (lowestBalance < 0) {
-    if (nextIncomeDate) {
-      const firstNegativeDay = dailyForecast.find((d) => d.closingBalance < 0);
-      if (firstNegativeDay && nextIncomeDate > firstNegativeDay.date) {
-        return {
-          status: "critical",
-          reason: `Balance goes negative on ${firstNegativeDay.date} before next income on ${nextIncomeDate}`,
-        };
-      }
-    }
-    return { status: "risk", reason: "Balance projected to go negative before month-end" };
+  // Critical: would end month negative
+  if (monthEndBalance < 0) {
+    return {
+      status: "critical",
+      reason: `Projected to end month at ${formatCurrencyStatic(monthEndBalance)} — action needed`,
+    };
   }
 
-  // Risk: balance drops below 20% threshold
+  // Risk: dips negative temporarily but recovers, or drops below safety threshold
+  if (lowestBalance < 0) {
+    return {
+      status: "risk",
+      reason: `Balance temporarily dips negative but recovers to ${formatCurrencyStatic(monthEndBalance)} by month-end — monitor cashflow timing`,
+    };
+  }
+
   if (lowestBalance < threshold) {
     const lowDay = dailyForecast.find((d) => d.closingBalance === lowestBalance);
     return {
