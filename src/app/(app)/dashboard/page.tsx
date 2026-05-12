@@ -26,8 +26,18 @@ interface AggregateResponse {
     isStale: boolean;
     statementPeriodEnd: string | null;
   };
+  statementInfo: {
+    openingBalance: number | null;
+    totalIncome: number | null;
+    totalExpenses: number | null;
+    closingBalance: number | null;
+    periodFrom: string | null;
+    periodTo: string | null;
+    bankName: string | null;
+  } | null;
   balanceValidation: {
     valid: boolean;
+    differencePence: number;
     message: string;
   } | null;
   accumulated: {
@@ -38,7 +48,9 @@ interface AggregateResponse {
     totalTransactions: number;
     dateRange: { from: string; to: string } | null;
   };
-  forecast: MonthEndForecast | null;
+  forecast: (MonthEndForecast & {
+    forecastMode?: { isLowConfidence: boolean; reason: string | null };
+  }) | null;
   monthly: Array<{
     month: string;
     label: string;
@@ -271,6 +283,8 @@ export default function DashboardPage() {
             patterns={data.patterns}
             totalDocuments={data.totalDocuments}
             totalTransactions={data.totalTransactions}
+            statementInfo={data.statementInfo}
+            balanceValidation={data.balanceValidation}
           />
           <RecommendedActions
             forecast={data.forecast}
@@ -329,6 +343,8 @@ export default function DashboardPage() {
             patterns={data.patterns}
             totalDocuments={data.totalDocuments}
             totalTransactions={data.totalTransactions}
+            statementInfo={data.statementInfo}
+            balanceValidation={data.balanceValidation}
           />
           <RecommendedActions
             forecast={data.forecast}

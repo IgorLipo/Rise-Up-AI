@@ -36,6 +36,20 @@ interface Props {
       nextExpected: string;
     }>;
   } | null;
+  statementInfo?: {
+    openingBalance: number | null;
+    totalIncome: number | null;
+    totalExpenses: number | null;
+    closingBalance: number | null;
+    periodFrom: string | null;
+    periodTo: string | null;
+    bankName: string | null;
+  } | null;
+  balanceValidation?: {
+    valid: boolean;
+    differencePence: number;
+    message: string;
+  } | null;
 }
 
 export function AccumulatedStats({

@@ -33,8 +33,11 @@ function DailyForecastRow({ day }: { day: DailyForecast }) {
           {day.expectedExpenses > 0 && (
             <span className="text-red-500 font-mono">-{formatCurrency(day.expectedExpenses)}</span>
           )}
+          <span className="text-zinc-400 font-mono text-[10px]">
+            Opens {formatCurrency(day.openingBalance)}
+          </span>
           <span className={`font-mono font-medium ${day.closingBalance >= 0 ? "text-zinc-700" : "text-red-600"}`}>
-            {formatCurrency(day.closingBalance)}
+            Closes {formatCurrency(day.closingBalance)}
           </span>
         </div>
       </div>
