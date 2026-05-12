@@ -319,11 +319,7 @@ export default function DashboardPage() {
 
       {activeTab === "transactions" && (
         <div className="mt-5">
-          <TransactionsTab
-            categories={data.categories}
-            totalTransactions={data.totalTransactions}
-            onViewAllTransactions={() => router.push("/transactions")}
-          />
+          <TransactionsTab categories={data.categories} />
         </div>
       )}
 

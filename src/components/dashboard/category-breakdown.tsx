@@ -49,9 +49,11 @@ function categoryLabel(key: string): string {
 
 interface Props {
   categories: CategorySummary[];
+  onCategoryClick?: (category: string) => void;
+  activeCategory?: string | null;
 }
 
-export function CategoryBreakdown({ categories }: Props) {
+export function CategoryBreakdown({ categories, onCategoryClick, activeCategory }: Props) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
   if (categories.length === 0) return null;
@@ -70,8 +72,13 @@ export function CategoryBreakdown({ categories }: Props) {
           return (
             <div key={cat.category}>
               <button
-                onClick={() => setExpandedCategory(isExpanded ? null : cat.category)}
-                className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-zinc-50 transition-colors text-left"
+                onClick={() => {
+                  onCategoryClick?.(cat.category);
+                  setExpandedCategory(isExpanded ? null : cat.category);
+                }}
+                className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-colors text-left ${
+                  activeCategory === cat.category ? "bg-zinc-100" : "hover:bg-zinc-50"
+                } ${onCategoryClick ? "cursor-pointer" : ""}`}
               >
                 <span className="w-32 text-xs text-zinc-600 truncate">
                   {categoryLabel(cat.category)}

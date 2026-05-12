@@ -272,6 +272,22 @@ body {
   color: #fff;
 }
 
+/* ── Text selection on data elements ── */
+[class*="data-"], .select-text, table, .transaction-row, .category-label,
+.dashboard-card p, .dashboard-card span, .dashboard-card div,
+.transaction-list span, .transaction-list div {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Override any select-none on interactive data containers */
+.bg-white.border.rounded-xl.select-text,
+.transaction-row,
+.transactions-tab * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* ── Focus ring ── */
 
 *:focus-visible {
