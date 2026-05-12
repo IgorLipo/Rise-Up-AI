@@ -8,7 +8,7 @@ This roadmap fixes the cashflow forecasting app's core logic (Phase 1), restruct
 
 - [x] **Phase 1: Backend Logic Fixes** - Correct balance extraction, forecast engine, categorization, suspicious detection, risk messages, and upload recalculation pipeline (FOR-04 Modes A/C deferred to Phase 1b)
 - [ ] **Phase 2: Dashboard UI & Experience** - Restructure dashboard with tabs, daily forecast readability, month cards, review queue, insight cards, status display, and action recommendations
-- [ ] **Phase 3: Forecast Trust & Transactions Fix** - Make Forecast page trustworthy with source-of-truth, validation, audit trail. Fix Transactions with search, drill-down, correct categorization, selectable text. Rebuild One-Off logic so repeats are never one-off.
+- [x] **Phase 3: Forecast Trust & Transactions Fix** - Make Forecast page trustworthy with source-of-truth, validation, audit trail. Fix Transactions with search, drill-down, correct categorization, selectable text. Rebuild One-Off logic so repeats are never one-off. (completed 2026-05-12)
 
 ## Phase Details
 
@@ -33,7 +33,7 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
 |------|-------------|-------------|------------|
 | 1 | BAL-01, BAL-02, BAL-04 | Balance extraction from latest statement closing_balance + validation check | Nothing |
 | 2 | CAT-01, CAT-02, CAT-03, CAT-04 | Vendor-to-category keyword mapping layer (deterministic, pre-AI) | Nothing |
-| 3 | BAL-03, BAL-05 | API response restructuring: separate `currentPosition` from `accumulatedPerformance` | Step 1 |
+| 3 | 3/3 | Complete   | 2026-05-12 |
 | 4 | FOR-01, FOR-02 | `catchUpBalance` anchored to correct balance, statement-period-aware projection | Step 1 |
 | 5 | CAT-05, FOR-09 | `learnFromHistory` separation logic + multi-factor confidence tiers | Step 4 |
 | 6 | FOR-03, FOR-04, FOR-05, FOR-07, FOR-08, FOR-10 | Forecast generation: correct formula, deduplication, item tagging, output summary | Steps 4, 5 |
@@ -75,7 +75,7 @@ The 26 requirements have strict dependencies. Work must proceed in this order:
 **Plans**: 3 plans (2 waves)
 - [x] 03-01-PLAN.md — Part 1: Forecast Trust & Validation (8 criteria: statement source-of-truth, balance validation, audit trail, status fix, daily opening/closing, catch-up estimate, forecast mode rules, hero delta)
 - [x] 03-02-PLAN.md — Part 2: Transactions Fix (6 criteria: text selection, primary category, classification fixes, category list rebuild, search & drill-down, row readability)
-- [ ] 03-03-PLAN.md — Part 3: One-Off Logic Rebuild (9 criteria: repeat detection, one-off definition, vendor research, first-seen flag, vendor look-ahead, occurrence drill-down, vendor_intel population, backfill script, income-side detection)
+- [x] 03-03-PLAN.md — Part 3: One-Off Logic Rebuild (9 criteria: repeat detection, one-off definition, vendor research, first-seen flag, vendor look-ahead, occurrence drill-down, vendor_intel population, backfill script, income-side detection)
 
 ## Progress
 
