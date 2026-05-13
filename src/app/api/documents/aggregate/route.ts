@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { detectAllAsync } from "@/lib/detection";
-import { generateForecast, daysBetween } from "@/lib/forecast";
+import { generateForecast, daysBetween, validateDailyForecast } from "@/lib/forecast";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
@@ -30,8 +30,10 @@ interface MonthlySummary {
   totalExpenses: number;
   netFlow: number;
   transactionCount: number;
-  /** Per-month health status: safe | watch | risk | critical */
   status: "safe" | "watch" | "risk" | "critical";
+  completeness?: "complete" | "partial";
+  dataFrom?: string;
+  dataTo?: string;
 }
 
 interface CategorySummary {
@@ -48,15 +50,14 @@ interface CategorySummary {
   }>;
 }
 
-/** Compute per-month status based on income/expense ratio and net flow direction. */
 function monthStatus(income: number, expenses: number): MonthlySummary["status"] {
   if (income === 0 && expenses === 0) return "safe";
-  if (expenses === 0) return "safe"; // all income, no outgoings
+  if (expenses === 0) return "safe";
   const ratio = income / expenses;
-  if (ratio >= 1.1) return "safe";       // comfortably above break-even
-  if (ratio >= 0.75) return "watch";     // tight
-  if (ratio >= 0.4) return "risk";       // burning cash
-  return "critical";                      // income way below expenses
+  if (ratio >= 1.1) return "safe";
+  if (ratio >= 0.75) return "watch";
+  if (ratio >= 0.4) return "risk";
+  return "critical";
 }
 
 export async function GET(req: NextRequest) {
@@ -78,12 +79,77 @@ export async function GET(req: NextRequest) {
   }
 
   const companyId = member.company_id;
+  const url = new URL(req.url);
+  const forceRecalculate = url.searchParams.get("recalculate") === "true";
 
-  // Optional date range filtering
+  // ── Fast path: return cached aggregate if available ──
+  if (!forceRecalculate) {
+    const { data: cached } = await supabase
+      .from("company_aggregate_cache")
+      .select("aggregate_data, last_calculated_at, needs_recalculation")
+      .eq("company_id", companyId)
+      .maybeSingle();
+
+    if (cached && !cached.needs_recalculation && cached.aggregate_data) {
+      const data = cached.aggregate_data as Record<string, unknown>;
+      return NextResponse.json({
+        ...data,
+        _cached: true,
+        _lastCalculatedAt: cached.last_calculated_at,
+      });
+    }
+  }
+
+  // ── Slow path: full computation ──
+  const result = await computeAggregate(supabase, companyId, req);
+
+  // Save to cache
+  await supabase
+    .from("company_aggregate_cache")
+    .upsert({
+      company_id: companyId,
+      aggregate_data: result as unknown as Record<string, unknown>,
+      last_calculated_at: new Date().toISOString(),
+      needs_recalculation: false,
+    });
+
+  return NextResponse.json({
+    ...result,
+    _cached: false,
+    _lastCalculatedAt: new Date().toISOString(),
+  });
+}
+
+async function computeAggregate(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  companyId: string,
+  req: NextRequest,
+) {
   const url = new URL(req.url);
   const dateFrom = url.searchParams.get("from");
   const dateTo = url.searchParams.get("to");
   const dateFilterActive = !!(dateFrom || dateTo);
+
+  // ── Accurate counts from statement_history (deduplicated) ──
+  const { data: statementHistory } = await supabase
+    .from("statement_history")
+    .select("statement_period_start, statement_period_end, transaction_count")
+    .eq("company_id", companyId)
+    .eq("parse_status", "ok")
+    .order("uploaded_at", { ascending: false });
+
+  const seenPeriods = new Set<string>();
+  let accurateStatementCount = 0;
+  let accurateTransactionCount = 0;
+
+  for (const row of statementHistory ?? []) {
+    const key = `${row.statement_period_start}|${row.statement_period_end}`;
+    if (!seenPeriods.has(key)) {
+      seenPeriods.add(key);
+      accurateStatementCount++;
+      accurateTransactionCount += row.transaction_count ?? 0;
+    }
+  }
 
   // Fetch ALL documents for this company
   const { data: docs } = await supabase
@@ -93,12 +159,12 @@ export async function GET(req: NextRequest) {
     .order("uploaded_at", { ascending: true });
 
   if (!docs || docs.length === 0) {
-    return NextResponse.json({
+    return {
       documents: [],
       totalDocuments: 0,
       totalTransactions: 0,
       hasData: false,
-    });
+    };
   }
 
   // Aggregate all transactions from all statements
@@ -164,13 +230,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Use filtered transactions for all downstream processing
   const workingTransactions = filteredTransactions;
 
-  // ── Cross-Month Learning (always uses all transactions for accuracy) ──
+  // ── Cross-Month Learning ──
   const learningReport = learnFromHistory(allTransactions);
 
-  // Build entity attributes for vendors (must be before vendorIntel enrichment)
   const vendorEntityAttrs = new Map<string, { linkedProperty: string | null; linkedPerson: string | null; personRole: string | null }>();
   for (const vendor of learningReport.vendors.values()) {
     vendorEntityAttrs.set(
@@ -179,10 +243,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Build initial vendor intel entries from learning (synchronous, no AI calls)
   const vendorIntelEntries = buildVendorIntelEntries(learningReport, companyId);
 
-  // Enrich vendor intel with entity attributes
   for (const entry of vendorIntelEntries) {
     const attrs = vendorEntityAttrs.get(entry.canonicalName);
     if (attrs) {
@@ -191,13 +253,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Ensure ALL vendors from ALL statements have complete vendor_intel entries
-  // (Researches unknown vendors via DeepSeek, updates existing ones, persists)
-  // Run in background — response doesn't depend on this completing
+  // Background vendor intel research (non-blocking)
   ensureCompleteVendorIntel(learningReport, companyId).catch(() => {});
 
-  // ── Suspicious Detection (always uses all transactions) ──
-  // Build known business vendors to skip personal detection for business transactions
+  // ── Suspicious Detection ──
   const knownBusinessVendors = new Set<string>();
   for (const vendor of learningReport.recurringCandidates) {
     const bizCategories = ["rent", "property-management", "property-income", "taxes", "supplier-payments", "utilities", "software", "professional-services"];
@@ -207,8 +266,7 @@ export async function GET(req: NextRequest) {
   }
   const allSuspicious = detectAllSuspicious(allTransactions, knownBusinessVendors);
 
-  // ── Pattern Detection (with known vendors + DB intel) ──
-  // Build known vendor map from cross-month learning
+  // ── Pattern Detection ──
   const knownVendors = new Map<string, AIClassification>();
   for (const vendor of learningReport.vendors.values()) {
     knownVendors.set(vendor.canonicalName, {
@@ -218,7 +276,6 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Load existing vendor_intel from DB (includes user corrections)
   const existingVendorMap = new Map<string, VendorIntelEntry>();
   try {
     const dbVendors = await listVendorIntel(companyId);
@@ -233,10 +290,9 @@ export async function GET(req: NextRequest) {
       }
     }
   } catch {
-    // Non-critical — proceed with learned vendors only
+    // Non-critical
   }
 
-  // Read user annotations and apply as high-confidence overrides
   try {
     const annotations = await listAnnotations(companyId);
     for (const a of annotations) {
@@ -252,23 +308,16 @@ export async function GET(req: NextRequest) {
     // Non-critical
   }
 
-  // Pattern detection always uses all transactions for accuracy
   const { patterns, newVendors } = await detectAllAsync(allTransactions, knownVendors);
 
-  // ── Build a set of canonical merchant names visible in the filtered range ──
   const filteredCoreKeys = new Set<string>();
   for (const tx of workingTransactions) {
     const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     filteredCoreKeys.add(coreKey);
-    // Also collect the description itself as a fallback check
     filteredCoreKeys.add(tx.description.toLowerCase().trim());
   }
 
   // ── Balance ──
-  // currentPosition = authoritative bank balance from latest statement only.
-  // accumulated = computed net flow across all statements (shown separately).
-
-  // Find the document with the most recent statement period end date
   let latestDoc = docs[0];
   let latestStmt = latestDoc.statement_data as unknown as StatementData;
   let latestPeriodTo = latestStmt?.accountInfo?.statementPeriod?.to ?? "";
@@ -285,7 +334,6 @@ export async function GET(req: NextRequest) {
   const latestClosingBalance = latestStmt?.accountInfo?.closingBalance;
   const latestPeriodFrom = latestStmt?.accountInfo?.statementPeriod?.from ?? "";
 
-  // Build current position from bank-verified data only
   const currentPosition = {
     balance: latestClosingBalance ?? null as number | null,
     date: latestPeriodTo || null as string | null,
@@ -295,7 +343,6 @@ export async function GET(req: NextRequest) {
     statementPeriodEnd: latestPeriodTo || null as string | null,
   };
 
-  // Balance validation on the latest statement
   let balanceValidation: { valid: boolean; differencePence: number; message: string } | null = null;
   if (latestClosingBalance != null && latestStmt?.accountInfo) {
     const opening = latestStmt.accountInfo.openingBalance ?? 0;
@@ -308,7 +355,6 @@ export async function GET(req: NextRequest) {
     balanceValidation = validateStatementBalance(opening, credits, debits, latestClosingBalance);
   }
 
-  // ── Statement Source-of-Truth ──
   const statementInfo = latestStmt ? {
     openingBalance: latestStmt.accountInfo?.openingBalance ?? null as number | null,
     totalIncome: latestStmt.transactions
@@ -323,10 +369,9 @@ export async function GET(req: NextRequest) {
     bankName: latestStmt.accountInfo?.bankName ?? null as string | null,
   } : null;
 
-  // For forecast start: use bank-verified balance, or null if unavailable
   const forecastStartingBalance = currentPosition.balance;
 
-  // ── Filter patterns, suspicious items, vendors to date range when filter is active ──
+  // ── Filter patterns to date range ──
   let displayPatterns = patterns;
   let displaySuspicious = allSuspicious;
   let displayNewVendors = newVendors;
@@ -339,7 +384,6 @@ export async function GET(req: NextRequest) {
   let displayTotalVendors = learningReport.totalVendors;
 
   if (dateFilterActive) {
-    // Filter patterns: keep only those with at least one occurrence in the date range
     const patternOccurrenceInRange = (occurrences: { date: string; amount: number }[]): boolean =>
       occurrences.some((o) => {
         if (dateFrom && o.date < dateFrom) return false;
@@ -357,20 +401,17 @@ export async function GET(req: NextRequest) {
       ),
     };
 
-    // Filter suspicious: keep only those whose transaction date falls in the range
     displaySuspicious = allSuspicious.filter((s) => {
       if (dateFrom && s.transaction.date < dateFrom) return false;
       if (dateTo && s.transaction.date > dateTo) return false;
       return true;
     });
 
-    // Filter new vendors: keep only those whose merchant name appears in filtered transactions
     displayNewVendors = newVendors.filter((v) => {
       const key = v.merchantNormalized.toLowerCase();
       return filteredCoreKeys.has(key);
     });
 
-    // Filter vendor learning: keep only vendors that appear in filtered transactions
     displayRecurringVendors = learningReport.recurringCandidates.filter((v) =>
       filteredCoreKeys.has(v.canonicalName.toLowerCase())
     );
@@ -388,19 +429,26 @@ export async function GET(req: NextRequest) {
     );
     displayTotalVendors = displayRecurringVendors.length + displaySuspiciousVendors.length + displayOneOffCandidates.length;
 
-    // Filter cross-month insights: keep only those mentioning vendors in the filtered range
     displayCrossMonthInsights = learningReport.crossMonthInsights.filter((insight) =>
       filteredCoreKeys.has(insight.vendor.toLowerCase())
     );
   }
 
-  // Generate forecast using filtered patterns when date filter is active
-  // Only generate when we have a bank-verified starting balance
-  const forecast = forecastStartingBalance != null
+  let forecast = forecastStartingBalance != null
     ? generateForecast(displayPatterns, forecastStartingBalance)
     : null;
+  let forecastError: string | null = null;
 
-  // ── Catch-Up Estimate (computed in route, not in forecast engine) ──
+  if (forecast) {
+    const validation = validateDailyForecast(forecast.dailyForecast, forecast.currentBalance);
+    if (!validation.valid) {
+      console.error("Forecast validation failed:", validation.errors);
+      forecastError = validation.errors.join("; ");
+      forecast = null;
+    }
+  }
+
+  // ── Catch-Up Estimate ──
   let catchUpEstimate: {
     daysSinceStatement: number;
     likelySpent: number;
@@ -441,7 +489,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Forecast Mode (low-confidence detection) ──
+  // ── Forecast Mode ──
   const forecastMode: { isLowConfidence: boolean; reason: string | null } = (() => {
     if (!latestPeriodTo) return { isLowConfidence: false, reason: null };
     const todayDay = new Date().getDate();
@@ -471,6 +519,17 @@ export async function GET(req: NextRequest) {
       year: "numeric",
       month: "long",
     });
+
+    // Determine completeness: count unique days with transactions
+    const uniqueDays = new Set(txs.map((t) => t.date)).size;
+    const totalDaysInMonth = new Date(parseInt(month.slice(0, 4)), parseInt(month.slice(5, 7)), 0).getDate();
+    const completeness: "complete" | "partial" = uniqueDays >= Math.min(15, totalDaysInMonth) ? "complete" : "partial";
+
+    // Calculate actual data range for this month
+    const dates = txs.map((t) => t.date).sort();
+    const dataFrom = dates[0] ?? month + "-01";
+    const dataTo = dates[dates.length - 1] ?? month + "-01";
+
     monthlySummaries.push({
       month,
       label,
@@ -480,11 +539,14 @@ export async function GET(req: NextRequest) {
       netFlow: income - expenses,
       transactionCount: txs.length,
       status: monthStatus(income, expenses),
+      completeness,
+      dataFrom,
+      dataTo,
     });
   }
   monthlySummaries.sort((a, b) => b.month.localeCompare(a.month));
 
-  // ── Category Breakdowns (from filtered transactions, classified) ──
+  // ── Category Breakdowns ──
   const categoryMap = new Map<string, { total: number; count: number; transactions: CategorySummary["transactions"] }>();
   for (const tx of workingTransactions) {
     if (tx.type !== "debit") continue;
@@ -517,7 +579,6 @@ export async function GET(req: NextRequest) {
     }))
     .sort((a, b) => b.total - a.total);
 
-  // ── Helper: compute amount trend from occurrence data ──
   function computeAmountTrend(occurrences: { date: string; amount: number }[]): string {
     if (occurrences.length < 3) return "insufficient-data";
     const firstHalf = occurrences.slice(0, Math.ceil(occurrences.length / 2));
@@ -574,7 +635,7 @@ export async function GET(req: NextRequest) {
     reason: v.isRecurring ? "Recurring personal-like expense" : "One-off personal-like expense",
   }));
 
-  // ── Entity Extraction (properties + people) ──
+  // ── Entity Extraction ──
   const txDescriptors = workingTransactions.map((tx) => ({ id: tx.id, description: tx.description }));
   const entities = extractEntities(txDescriptors);
 
@@ -586,13 +647,12 @@ export async function GET(req: NextRequest) {
     .filter((t) => t.type === "debit")
     .reduce((s, t) => s + t.amount, 0);
 
-  return NextResponse.json({
+  return {
     hasData: true,
     documents: statementSummaries,
-    totalDocuments: docs.length,
-    totalTransactions: workingTransactions.length,
+    totalDocuments: accurateStatementCount,
+    totalTransactions: accurateTransactionCount,
 
-    // Current position (bank-verified)
     currentPosition: {
       balance: currentPosition.balance,
       date: currentPosition.date,
@@ -602,23 +662,20 @@ export async function GET(req: NextRequest) {
       statementPeriodEnd: currentPosition.statementPeriodEnd,
     },
 
-    // Statement source-of-truth
     statementInfo,
 
-    // Balance validation
     balanceValidation: balanceValidation ? {
       valid: balanceValidation.valid,
       differencePence: balanceValidation.differencePence,
       message: balanceValidation.message,
     } : null,
 
-    // Accumulated performance (computed — separate from current position)
     accumulated: {
       totalIncome,
       totalExpenses,
       netFlow: totalIncome - totalExpenses,
-      statementCount: docs.length,
-      totalTransactions: workingTransactions.length,
+      statementCount: accurateStatementCount,
+      totalTransactions: accurateTransactionCount,
       dateRange: workingTransactions.length > 0
         ? {
             from: workingTransactions.reduce((earliest, tx) => tx.date < earliest ? tx.date : earliest, workingTransactions[0].date),
@@ -627,7 +684,6 @@ export async function GET(req: NextRequest) {
         : null,
     },
 
-    // Forecast (only generated when we have a starting balance)
     forecast: forecast != null
       ? {
           currentBalance: forecast.currentBalance,
@@ -648,13 +704,12 @@ export async function GET(req: NextRequest) {
         }
       : null,
 
-    // Monthly breakdown
+    forecastError,
+
     monthly: monthlySummaries,
 
-    // Category breakdowns
     categories,
 
-    // Patterns
     patterns: {
       recurringExpenses: displayPatterns.recurringExpenses.map((p) => ({
         merchant: (p as any).merchant,
@@ -680,7 +735,6 @@ export async function GET(req: NextRequest) {
       oneOffIncome: displayPatterns.oneOffIncome.length,
     },
 
-    // New vendors discovered by AI (with reasoning)
     newVendors: displayNewVendors.map((v) => ({
       merchantRaw: v.merchantRaw,
       merchantNormalized: v.merchantNormalized,
@@ -689,7 +743,6 @@ export async function GET(req: NextRequest) {
       reasoning: v.reasoning,
     })),
 
-    // Vendor learning
     vendors: {
       total: displayTotalVendors,
       recurring: recurringVendors,
@@ -726,10 +779,8 @@ export async function GET(req: NextRequest) {
       }),
     },
 
-    // Cross-month insights
     crossMonthInsights: displayCrossMonthInsights,
 
-    // Entity extraction (properties + people)
     entities: {
       properties: [...entities.properties.entries()].map(([key, match]) => ({
         key,
@@ -748,7 +799,6 @@ export async function GET(req: NextRequest) {
       })),
     },
 
-    // Suspicious transactions
     suspicious: displaySuspicious.map((s) => ({
       merchant: s.merchant,
       reason: s.reason,
@@ -759,5 +809,5 @@ export async function GET(req: NextRequest) {
       amount: s.transaction.amount,
       description: s.transaction.description,
     })),
-  });
+  };
 }

@@ -55,6 +55,7 @@ function TransactionsPageInner() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [vendorMap, setVendorMap] = useState<Map<string, VendorInfo>>(new Map());
   const [suspiciousMap, setSuspiciousMap] = useState<Map<string, SuspiciousInfo>>(new Map());
+  const monthParam = searchParams.get("month") ?? undefined;
   const [filter, setFilter] = useState<Subcategory | "all" | "suspicious">(
     (searchParams.get("filter") as Subcategory | "suspicious") || "all"
   );
@@ -66,6 +67,7 @@ function TransactionsPageInner() {
   const [correctingTx, setCorrectingTx] = useState<string | null>(null);
   const [correctionSubcategory, setCorrectionSubcategory] = useState<Subcategory>("one-off");
   const [savingCorrection, setSavingCorrection] = useState(false);
+  const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -95,6 +97,8 @@ function TransactionsPageInner() {
                 return true;
               });
               setTransactions(unique);
+              const months = [...new Set(unique.map((tx: Transaction) => tx.date.slice(0, 7)))].sort().reverse();
+              setAvailableMonths(months);
               setLoading(false);
             }).catch(() => setLoading(false));
           }).catch(() => setLoading(false));
@@ -141,6 +145,11 @@ function TransactionsPageInner() {
   const filtered = useMemo(() => {
     let result = transactions;
 
+    // Apply month filter
+    if (monthParam) {
+      result = result.filter((tx) => tx.date.startsWith(monthParam));
+    }
+
     // Apply category filter
     if (filter === "suspicious") {
       result = result.filter((tx) => {
@@ -171,7 +180,7 @@ function TransactionsPageInner() {
     }
 
     return result;
-  }, [transactions, filter, vendorMap, suspiciousMap, search]);
+  }, [transactions, filter, vendorMap, suspiciousMap, search, monthParam]);
 
   const paginated = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -241,17 +250,40 @@ function TransactionsPageInner() {
     <div className="max-w-4xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-lg font-bold text-zinc-900">Transactions</h1>
+          <h1 className="text-lg font-bold text-zinc-900">
+            {monthParam
+              ? `Transactions — ${new Date(monthParam + "-01").toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`
+              : "Transactions — All months"}
+          </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            {filtered.length} of {transactions.length} transactions
+            Showing {filtered.length.toLocaleString()} of {transactions.length.toLocaleString()} transactions
             {vendorMap.size > 0 ? ` · ${vendorMap.size} vendors known` : ""}
             {search ? ` · matching "${search}"` : ""}
           </p>
         </div>
       </div>
 
-      {/* Search + page size */}
+      {/* Month selector + Search + page size */}
       <div className="flex gap-3 mb-3">
+        <select
+          value={monthParam ?? ""}
+          onChange={(e) => {
+            const value = e.target.value;
+            const params = new URLSearchParams(searchParams.toString());
+            if (value) params.set("month", value);
+            else params.delete("month");
+            window.history.replaceState(null, "", `?${params.toString()}`);
+            window.location.reload();
+          }}
+          className="text-xs border border-zinc-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-zinc-400 text-zinc-700"
+        >
+          <option value="">All months</option>
+          {availableMonths.map((m) => (
+            <option key={m} value={m}>
+              {new Date(m + "-01").toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+            </option>
+          ))}
+        </select>
         <div className="relative flex-1">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -499,7 +531,9 @@ function TransactionsPageInner() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs text-zinc-400">
-            Page {page} of {totalPages} ({filtered.length} results)
+            {filtered.length > 0
+              ? `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filtered.length)} of ${filtered.length.toLocaleString()}`
+              : "0 results"}
           </div>
           <div className="flex gap-1">
             <button

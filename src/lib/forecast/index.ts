@@ -369,4 +369,50 @@ function getMonthEnd(today: string): string {
   return end.toISOString().split("T")[0];
 }
 
+export interface ForecastValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export function validateDailyForecast(
+  forecast: DailyForecast[],
+  startBalance: number,
+): ForecastValidationResult {
+  const errors: string[] = [];
+
+  if (forecast.length === 0) {
+    return { valid: true, errors: [] };
+  }
+
+  let totalIncome = 0;
+  let totalExpenses = 0;
+
+  for (let i = 0; i < forecast.length; i++) {
+    const day = forecast[i];
+    const diff = Math.abs((day.openingBalance + day.expectedIncome - day.expectedExpenses) - day.closingBalance);
+    if (diff >= 0.01) {
+      errors.push(`${day.date}: opening + income - expenses ≠ closing (off by ${diff.toFixed(4)})`);
+    }
+
+    if (i > 0) {
+      const prevDay = forecast[i - 1];
+      const boundaryDiff = Math.abs(prevDay.closingBalance - day.openingBalance);
+      if (boundaryDiff >= 0.01) {
+        errors.push(`${day.date}: previous closing ≠ current opening (off by ${boundaryDiff.toFixed(4)})`);
+      }
+    }
+
+    totalIncome += day.expectedIncome;
+    totalExpenses += day.expectedExpenses;
+  }
+
+  const monthEndBalance = forecast[forecast.length - 1].closingBalance;
+  const fullDiff = Math.abs((startBalance + totalIncome - totalExpenses) - monthEndBalance);
+  if (fullDiff >= 0.01) {
+    errors.push(`Full forecast: (start + income - expenses) ≠ monthEnd (off by ${fullDiff.toFixed(4)})`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 export type { DailyForecast, ExpectedTransaction, ForecastStatus, RiskItem };

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+export const dynamic = "force-dynamic";
 import { useActiveCompany } from "@/lib/auth/client";
 import type { DailyForecast, ForecastStatus } from "@/lib/forecast";
 import { StatusBadge } from "@/components/forecast/status-badge";
@@ -108,49 +110,80 @@ export default function ForecastPage() {
           No daily forecast data available.
         </div>
       ) : (
-        daily.map((day) => (
-          <div
-            key={day.date}
-            className={`bg-white border rounded-xl p-3 ${
-              day.riskFlag ? "border-amber-300 bg-amber-50" : "border-zinc-200"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-medium text-zinc-900">
-                {new Date(day.date).toLocaleDateString("en-GB", {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                })}
-              </div>
-              <div className="text-sm font-bold tabular-nums text-zinc-900">
-                {formatCurrency(day.closingBalance)}
-              </div>
-            </div>
-            {day.transactions.length > 0 ? (
-              <div className="space-y-1">
-                {day.transactions.map((tx, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-zinc-600 truncate flex-1 mr-2">{tx.merchant}</span>
-                    <span
-                      className={`font-mono tabular-nums ${
-                        tx.category === "Income" ? "text-emerald-600" : "text-red-500"
-                      }`}
-                    >
-                      {tx.category === "Income" ? "+" : "-"}
-                      {formatCurrency(tx.expectedAmount)}
-                    </span>
-                  </div>
+        <>
+          {/* Risk summary at top */}
+          {(() => {
+            const riskDays = daily.filter((d) => d.riskFlag);
+            if (riskDays.length === 0) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                <span className="font-semibold">{riskDays.length} day{riskDays.length !== 1 ? "s" : ""} with low balance risk:</span>
+                {" "}
+                {riskDays.map((d, i) => (
+                  <span key={d.date}>
+                    {i > 0 && i < riskDays.length - 1 ? ", " : ""}
+                    {i > 0 && i === riskDays.length - 1 ? " and " : ""}
+                    {new Date(d.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                  </span>
                 ))}
+                {" — "}
+                {riskDays.some((d) => d.riskMessage?.includes("overdraft"))
+                  ? "Possible overdraft risk. Review upcoming expenses."
+                  : riskDays.some((d) => d.closingBalance < 0)
+                    ? "Balance may go negative. Consider deferring non-essential payments."
+                    : "Balance may run low. Monitor closely."}
               </div>
-            ) : (
-              <div className="text-xs text-zinc-400">No expected transactions</div>
-            )}
-            {day.riskFlag && day.riskMessage && (
-              <div className="text-xs text-amber-700 mt-1 font-medium">{day.riskMessage}</div>
-            )}
-          </div>
-        ))
+            );
+          })()}
+
+          {daily.map((day) => (
+            <div
+              key={day.date}
+              className={`bg-white border rounded-xl p-3 ${
+                day.riskFlag ? "border-amber-300 bg-amber-50" : "border-zinc-200"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium text-zinc-900">
+                    {new Date(day.date).toLocaleDateString("en-GB", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </div>
+                  {day.riskFlag && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
+                      Risk
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm font-bold tabular-nums text-zinc-900">
+                  {formatCurrency(day.closingBalance)}
+                </div>
+              </div>
+              {day.transactions.length > 0 ? (
+                <div className="space-y-1">
+                  {day.transactions.map((tx, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-600 truncate flex-1 mr-2">{tx.merchant}</span>
+                      <span
+                        className={`font-mono tabular-nums ${
+                          tx.category === "Income" ? "text-emerald-600" : "text-red-500"
+                        }`}
+                      >
+                        {tx.category === "Income" ? "+" : "-"}
+                        {formatCurrency(tx.expectedAmount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-zinc-400">No expected transactions</div>
+              )}
+            </div>
+          ))}
+        </>
       )}
     </div>
   );

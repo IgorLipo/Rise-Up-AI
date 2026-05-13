@@ -11,6 +11,9 @@ interface MonthlySummary {
   netFlow: number;
   transactionCount: number;
   status: "safe" | "watch" | "risk" | "critical";
+  completeness?: "complete" | "partial";
+  dataFrom?: string;
+  dataTo?: string;
 }
 
 export interface MonthCardData {
@@ -21,6 +24,9 @@ export interface MonthCardData {
   netFlow: number;
   transactionCount: number;
   status: "safe" | "watch" | "risk" | "critical";
+  completeness?: "complete" | "partial";
+  dataFrom?: string;
+  dataTo?: string;
   statementPeriod?: { from: string; to: string };
   openingBalance?: number;
   closingBalance?: number;
@@ -73,12 +79,25 @@ export function MonthlySummaries({ monthly, onSelectMonth }: Props) {
                 <div className="flex items-center gap-3">
                   {/* Status indicator dot */}
                   <span
-                    className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${statusStyle.dot}`}
-                    title={statusStyle.label}
+                    className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${
+                      m.completeness === "partial" ? "bg-amber-400" : statusStyle.dot
+                    }`}
+                    title={m.completeness === "partial" ? "Partial data" : statusStyle.label}
                   />
                   <div>
-                    <div className="text-sm font-semibold text-zinc-900">{m.label}</div>
-                    <div className="text-xs text-zinc-400 mt-0.5">{m.transactionCount} transactions</div>
+                    <div className="text-sm font-semibold text-zinc-900">
+                      {m.label}
+                      {m.completeness === "partial" && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                          Partial
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-zinc-400 mt-0.5">
+                      {m.dataFrom && m.dataTo
+                        ? `${m.dataFrom.slice(0, 10)} to ${m.dataTo.slice(0, 10)}`
+                        : `${m.transactionCount} transactions`}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -104,6 +123,13 @@ export function MonthlySummaries({ monthly, onSelectMonth }: Props) {
               </button>
               {isExpanded && (
                 <div className="px-4 pb-4 border-t border-zinc-100">
+                  {m.completeness === "partial" && (
+                    <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                      {m.month === new Date().toISOString().slice(0, 7)
+                        ? "Upload the next statement to complete this month's actuals."
+                        : `Partial data${m.dataFrom ? ` — available from ${m.dataFrom.slice(0, 10)}` : ""}${m.dataTo ? ` to ${m.dataTo.slice(0, 10)}` : ""}`}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2 mt-3">
                     <div className="bg-zinc-50 rounded-lg p-2.5">
                       <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Income</div>
@@ -167,18 +193,28 @@ export function MonthCard({ data, onViewTransactions }: {
             )}
           </div>
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+            data.completeness === "partial" ? "bg-amber-50 text-amber-700 border-amber-200" :
             data.status === "safe" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
             data.status === "watch" ? "bg-amber-50 text-amber-700 border-amber-200" :
             data.status === "risk" ? "bg-red-50 text-red-700 border-red-200" :
             "bg-red-100 text-red-800 border-red-300"
           }`}>
-            {data.status.charAt(0).toUpperCase() + data.status.slice(1)}
+            {data.completeness === "partial" ? "Partial" : data.status.charAt(0).toUpperCase() + data.status.slice(1)}
           </span>
         </div>
       </div>
 
       {/* Body */}
       <div className="p-4 space-y-3">
+        {/* Partial data notice */}
+        {data.completeness === "partial" && (
+          <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+            {data.month === new Date().toISOString().slice(0, 7)
+              ? "Upload the next statement to complete this month's actuals."
+              : `Partial data${data.dataFrom ? ` — available from ${data.dataFrom.slice(0, 10)}` : ""}${data.dataTo ? ` to ${data.dataTo.slice(0, 10)}` : ""}`}
+          </div>
+        )}
+
         {/* Balances (if available) */}
         {data.openingBalance !== undefined && data.closingBalance !== undefined && (
           <div className="grid grid-cols-2 gap-2">

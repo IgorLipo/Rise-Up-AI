@@ -13,9 +13,9 @@ export function CompanySelector() {
   const { companyId, switchCompany } = useActiveCompany();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [open, setOpen] = useState(false);
-  const supabase = createClient();
 
   useEffect(() => {
+    const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       supabase

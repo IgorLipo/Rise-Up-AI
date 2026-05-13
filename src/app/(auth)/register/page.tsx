@@ -9,11 +9,11 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    const supabase = createClient();
 
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) { toast.error(error.message); setLoading(false); return; }

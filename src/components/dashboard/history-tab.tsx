@@ -11,6 +11,9 @@ interface HistoryTabProps {
     netFlow: number;
     transactionCount: number;
     status: "safe" | "watch" | "risk" | "critical";
+    completeness?: "complete" | "partial";
+    dataFrom?: string;
+    dataTo?: string;
   }>;
   accumulated: {
     dateRange: { from: string; to: string } | null;

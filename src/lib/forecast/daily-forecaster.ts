@@ -20,6 +20,8 @@ export interface DailyForecast {
   openingBalance: number;
   expectedIncome: number;
   expectedExpenses: number;
+  mediumConfidenceIncome: number;
+  mediumConfidenceExpenses: number;
   closingBalance: number;
   transactions: ExpectedTransaction[];
   possibleUpcoming: ExpectedTransaction[];  // MEDIUM confidence
@@ -121,8 +123,12 @@ export function generateDailyForecast(
     const dateStr = formatDate(d);
     const dayTxs = perDay.get(dateStr) ?? [];
     const possibleTxs = possiblePerDay.get(dateStr) ?? [];
-    const income = dayTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
-    const expenses = dayTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
+    const highIncome = dayTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
+    const highExpenses = dayTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
+    const medIncome = possibleTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
+    const medExpenses = possibleTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
+    const income = highIncome + medIncome;
+    const expenses = highExpenses + medExpenses;
     const opening = balance;
     const closing = opening + income - expenses;
 
@@ -138,6 +144,8 @@ export function generateDailyForecast(
       openingBalance: opening,
       expectedIncome: income,
       expectedExpenses: expenses,
+      mediumConfidenceIncome: medIncome,
+      mediumConfidenceExpenses: medExpenses,
       closingBalance: closing,
       transactions: dayTxs,
       possibleUpcoming: possibleTxs,

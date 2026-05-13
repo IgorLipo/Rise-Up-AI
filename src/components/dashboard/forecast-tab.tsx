@@ -2,9 +2,7 @@
 
 import type { MonthEndForecast } from "@/lib/forecast";
 import { AccumulatedStats } from "@/components/dashboard/accumulated-stats";
-import { InsightHeroCard } from "@/components/dashboard/insight-hero-card";
 import { DailyForecastChart } from "@/components/charts/daily-forecast-chart";
-import { StatusBadge } from "@/components/dashboard/status-badge";
 import { formatCurrency } from "@/lib/utils";
 
 interface ForecastTabProps {
@@ -60,13 +58,6 @@ export function ForecastTab(props: ForecastTabProps) {
     totalDocuments, totalTransactions, statementInfo, balanceValidation,
   } = props;
 
-  const toleranceNote =
-    balanceValidation && statementInfo
-      ? balanceValidation.differencePence <= 2
-        ? `${balanceValidation.differencePence}p difference — within tolerance`
-        : `${balanceValidation.differencePence}p difference — exceeds 2p tolerance`
-      : null;
-
   return (
     <div className="space-y-5">
       <AccumulatedStats
@@ -115,76 +106,6 @@ export function ForecastTab(props: ForecastTabProps) {
             <span>In: {formatCurrency(statementInfo.totalIncome ?? 0)}</span>
             <span>Out: {formatCurrency(statementInfo.totalExpenses ?? 0)}</span>
             <span>Closing: {formatCurrency(statementInfo.closingBalance)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Balance Validation Widget (criterion 1.2) */}
-      {statementInfo && balanceValidation && (
-        <div
-          className={`rounded-xl p-4 ${
-            balanceValidation.valid
-              ? "bg-emerald-50 border border-emerald-200"
-              : "bg-red-50 border border-red-200"
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-base">
-              {balanceValidation.valid ? "✅" : "⚠️"}
-            </span>
-            <span
-              className={`text-sm font-semibold ${
-                balanceValidation.valid ? "text-emerald-800" : "text-red-800"
-              }`}
-            >
-              {balanceValidation.valid
-                ? `Balance validates (${toleranceNote})`
-                : `Doesn't balance (diff: ${formatCurrency(balanceValidation.differencePence / 100)})`}
-            </span>
-          </div>
-          <div className="text-xs text-zinc-600 ml-7">
-            {statementInfo.openingBalance != null &&
-              statementInfo.totalIncome != null &&
-              statementInfo.totalExpenses != null &&
-              statementInfo.closingBalance != null && (
-                <span>
-                  {formatCurrency(statementInfo.openingBalance)} +{" "}
-                  {formatCurrency(statementInfo.totalIncome)} -{" "}
-                  {formatCurrency(statementInfo.totalExpenses)} ={" "}
-                  {formatCurrency(statementInfo.closingBalance)}
-                </span>
-              )}
-          </div>
-          {balanceValidation.message && (
-            <div className="text-[11px] text-zinc-500 mt-1 ml-7">
-              {balanceValidation.message}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Hero Number: Predicted month-end balance with delta (criterion 1.8) */}
-      {forecast && (
-        <div className="bg-white border border-zinc-200 rounded-xl p-4">
-          <div className="text-xs text-zinc-400 uppercase tracking-wider font-medium mb-2">
-            Predicted at month-end
-          </div>
-          <div className="text-3xl font-bold text-zinc-900 tabular-nums">
-            {formatCurrency(forecast.predictedMonthEnd)}
-          </div>
-          <div
-            className={`text-sm mt-1 ${
-              forecast.predictedMonthEnd - forecast.currentBalance >= 0
-                ? "text-emerald-600"
-                : "text-red-500"
-            }`}
-          >
-            {forecast.predictedMonthEnd - forecast.currentBalance >= 0 ? "+" : ""}
-            {formatCurrency(forecast.predictedMonthEnd - forecast.currentBalance)}{" "}
-            from current
-          </div>
-          <div className="mt-2">
-            <StatusBadge status={forecast.status} />
           </div>
         </div>
       )}
@@ -280,19 +201,6 @@ export function ForecastTab(props: ForecastTabProps) {
         </div>
       )}
 
-      {/* Insight hero card (existing pattern) */}
-      {forecast && (
-        <InsightHeroCard
-          headline={forecast.statusReason}
-          summary={buildInsightSummary(forecast, categories)}
-          severity={
-            forecast.status === "safe" ? "info"
-              : forecast.status === "watch" ? "warning"
-              : "critical"
-          }
-        />
-      )}
-
       {/* Daily forecast section (criterion 1.5 — opening+closing per row) */}
       {forecast && forecast.dailyForecast.length > 0 && (
         <div>
@@ -304,32 +212,4 @@ export function ForecastTab(props: ForecastTabProps) {
       )}
     </div>
   );
-}
-
-function buildInsightSummary(
-  fc: MonthEndForecast,
-  categories: ForecastTabProps["categories"]
-): string {
-  const parts: string[] = [];
-  if (fc.remainingExpenses > 0) {
-    const topCats = categories.slice(0, 3).map((c) => c.category.replace(/-/g, " "));
-    parts.push(
-      `Around ${formatCurrency(fc.remainingExpenses)} expected to leave before month-end` +
-      (topCats.length > 0 ? `, mainly ${topCats.join(", ")}` : "")
-    );
-  }
-  if (fc.nextIncomeDate) {
-    parts.push(
-      `next income expected ${new Date(fc.nextIncomeDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
-    );
-  }
-  if (fc.dangerWindow) {
-    parts.push(
-      `balance may drop to ${formatCurrency(fc.dangerWindow.lowestBalance)} between ${fc.dangerWindow.from.slice(5)} and ${fc.dangerWindow.to.slice(5)}`
-    );
-  }
-  if (fc.biggestRisks.length > 0) {
-    parts.push(`${fc.biggestRisks[0].description}`);
-  }
-  return parts.join(". ") + ".";
 }

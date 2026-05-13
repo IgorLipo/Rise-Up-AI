@@ -1,7 +1,6 @@
 "use client";
 
 import { formatCurrency } from "@/lib/utils";
-import { StatusBadge } from "@/components/dashboard/status-badge";
 import { KeyDrivers } from "@/components/dashboard/key-drivers";
 import type { ForecastStatus } from "@/types";
 import type { MonthEndForecast } from "@/lib/forecast";
@@ -90,7 +89,7 @@ export function AccumulatedStats({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-white border border-zinc-200 rounded-xl p-4">
           <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1">
             Current balance
@@ -113,8 +112,14 @@ export function AccumulatedStats({
           )}
         </div>
         <div className="bg-white border border-zinc-200 rounded-xl p-4">
-          <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1">
+          <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1">
             Month-end forecast
+            <span className={`inline-block w-2 h-2 rounded-full ${
+              status === "safe" ? "bg-emerald-500"
+              : status === "watch" ? "bg-amber-500"
+              : status === "risk" ? "bg-orange-500"
+              : "bg-red-500"
+            }`} />
           </div>
           <div className={`text-2xl font-bold tabular-nums ${
             predictedMonthEnd >= currentBalance ? "text-emerald-700" : "text-red-600"
@@ -141,15 +146,6 @@ export function AccumulatedStats({
               <span className="text-zinc-500">Expenses</span>
               <span className="font-mono text-red-500">{formatCurrency(remainingExpenses)}</span>
             </div>
-          </div>
-        </div>
-        <div className="bg-white border border-zinc-200 rounded-xl p-4">
-          <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1">
-            Status
-          </div>
-          <StatusBadge status={status} className="mb-2" showCriteria={true} />
-          <div className="text-xs text-zinc-400">
-            {Math.round(confidence * 100)}% confidence
           </div>
         </div>
       </div>

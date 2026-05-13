@@ -11,11 +11,11 @@ import { ForecastTab } from "@/components/dashboard/forecast-tab";
 import { HistoryTab } from "@/components/dashboard/history-tab";
 import { IntelligenceTab } from "@/components/dashboard/intelligence-tab";
 import { TransactionsTab } from "@/components/dashboard/transactions-tab";
-import { ReviewTab } from "@/components/dashboard/review-tab";
-import { RecommendedActions } from "@/components/dashboard/recommended-actions";
 
 interface AggregateResponse {
   hasData: boolean;
+  _cached?: boolean;
+  _lastCalculatedAt?: string;
   totalDocuments: number;
   totalTransactions: number;
   currentPosition: {
@@ -51,6 +51,7 @@ interface AggregateResponse {
   forecast: (MonthEndForecast & {
     forecastMode?: { isLowConfidence: boolean; reason: string | null };
   }) | null;
+  forecastError?: string | null;
   monthly: Array<{
     month: string;
     label: string;
@@ -190,21 +191,45 @@ interface AggregateResponse {
 
 function DashboardSkeleton() {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-4 animate-pulse">
-      <div className="grid grid-cols-4 gap-3">
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5 animate-pulse">
+      {/* Header skeleton */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="h-7 bg-zinc-100 rounded w-28 mb-1" />
+          <div className="h-3 bg-zinc-100 rounded w-64" />
+        </div>
+        <div className="flex gap-2">
+          <div className="h-9 bg-zinc-100 rounded-lg w-28" />
+          <div className="h-9 bg-zinc-100 rounded-lg w-36" />
+        </div>
+      </div>
+      {/* Tab navigation skeleton */}
+      <div className="flex gap-1 border-b border-zinc-200 pb-0">
         {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-8 bg-zinc-100 rounded-t-lg w-32" />
+        ))}
+      </div>
+      {/* Top stat cards — 3 columns */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {[1, 2, 3].map((i) => (
           <div key={i} className="bg-white border border-zinc-200 rounded-xl p-4">
-            <div className="h-3 bg-zinc-100 rounded w-20 mb-2" />
-            <div className="h-7 bg-zinc-100 rounded w-24 mb-1" />
-            <div className="h-3 bg-zinc-100 rounded w-16" />
+            <div className="h-2.5 bg-zinc-100 rounded w-24 mb-2" />
+            <div className="h-7 bg-zinc-100 rounded w-28 mb-1" />
+            <div className="h-3 bg-zinc-100 rounded w-20" />
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white border border-zinc-200 rounded-xl p-4 h-48" />
-        <div className="bg-white border border-zinc-200 rounded-xl p-4 h-48" />
+      {/* Secondary stat cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-white border border-zinc-200 rounded-xl p-3">
+            <div className="h-2.5 bg-zinc-100 rounded w-16 mb-2 mx-auto" />
+            <div className="h-6 bg-zinc-100 rounded w-12 mx-auto" />
+          </div>
+        ))}
       </div>
-      <div className="bg-zinc-100 rounded-xl h-48" />
+      {/* Content area */}
+      <div className="bg-white border border-zinc-200 rounded-xl p-4 h-64" />
     </div>
   );
 }
@@ -226,6 +251,7 @@ function DashboardContent() {
   const [dateRange, setDateRange] = useState<{ preset: DateRangePreset; from?: string; to?: string }>({
     preset: "all",
   });
+  const [recalculating, setRecalculating] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
@@ -271,28 +297,68 @@ function DashboardContent() {
     router.replace(`/dashboard?${params.toString()}`, { scroll: false });
   };
 
+  const handleRecalculate = async () => {
+    if (!companyId) return;
+    setRecalculating(true);
+    try {
+      await fetch(`/api/documents/recalculate?companyId=${companyId}`, { method: "POST" });
+      const r = await fetch(`/api/documents/aggregate?recalculate=true`);
+      if (r.ok) {
+        const json = await r.json();
+        if (json.hasData) setData(json);
+      }
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   const TABS = [
     { id: "forecast", label: "Current Forecast" },
     { id: "history", label: "Monthly History" },
     { id: "intelligence", label: "Accumulated Intelligence" },
     { id: "transactions", label: "Transactions" },
-    { id: "review", label: "Review Queue" },
   ];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-zinc-900">Cashflow</h1>
-          {accumulated.dateRange && (
-            <p className="text-xs text-zinc-400 mt-0.5">
-              {accumulated.dateRange.from?.slice(0, 10)} — {accumulated.dateRange.to?.slice(0, 10)}
-            </p>
-          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            {accumulated.dateRange && (
+              <p className="text-xs text-zinc-400">
+                {accumulated.dateRange.from?.slice(0, 10)} — {accumulated.dateRange.to?.slice(0, 10)}
+              </p>
+            )}
+            {data._lastCalculatedAt && (
+              <p className="text-xs text-zinc-400">
+                &middot; Updated {new Date(data._lastCalculatedAt).toLocaleString()}
+                {(() => {
+                  const ageMs = Date.now() - new Date(data._lastCalculatedAt).getTime();
+                  if (ageMs > 60 * 60 * 1000) {
+                    const hours = Math.round(ageMs / (60 * 60 * 1000));
+                    return (
+                      <span className="text-amber-600 ml-0.5">
+                        &middot; {hours}h old — data may be stale
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <DateRangeSelector value={dateRange} onChange={setDateRange} />
+          <button
+            onClick={handleRecalculate}
+            disabled={recalculating}
+            className="px-4 py-2 rounded-lg border border-zinc-300 text-zinc-700 text-sm font-medium hover:bg-zinc-50 transition-colors disabled:opacity-50"
+          >
+            {recalculating ? "Recalculating…" : "Recalculate"}
+          </button>
           <button
             onClick={() => router.push("/upload")}
             className="px-4 py-2 rounded-lg bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 transition-colors"
@@ -318,10 +384,6 @@ function DashboardContent() {
             totalTransactions={data.totalTransactions}
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
-          />
-          <RecommendedActions
-            forecast={data.forecast}
-            currentBalance={currentPosition.balance}
           />
         </div>
       )}
@@ -352,13 +414,11 @@ function DashboardContent() {
 
       {activeTab === "transactions" && (
         <div className="mt-5">
-          <TransactionsTab categories={data.categories} />
-        </div>
-      )}
-
-      {activeTab === "review" && (
-        <div className="mt-5">
-          <ReviewTab suspicious={data.suspicious} />
+          <TransactionsTab
+            categories={data.categories}
+            monthly={data.monthly}
+            totalTransactions={data.totalTransactions}
+          />
         </div>
       )}
 
@@ -374,10 +434,6 @@ function DashboardContent() {
             totalTransactions={data.totalTransactions}
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
-          />
-          <RecommendedActions
-            forecast={data.forecast}
-            currentBalance={currentPosition.balance}
           />
         </div>
       )}
