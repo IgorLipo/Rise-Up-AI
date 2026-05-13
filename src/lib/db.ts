@@ -65,6 +65,16 @@ export async function saveDocument(
     console.error("Failed to record statement history:", historyError);
   }
 
+  // Invalidate aggregate cache so dashboard picks up the new statement
+  const { error: cacheError } = await supabase.from("company_aggregate_cache").upsert({
+    company_id: companyId,
+    aggregate_data: {},
+    needs_recalculation: true,
+  });
+  if (cacheError) {
+    console.error("Failed to invalidate aggregate cache:", cacheError);
+  }
+
   return true;
 }
 

@@ -214,8 +214,9 @@ export default function UploadPage() {
       });
 
       // Persist to DB
+      let saved = false;
       try {
-        await fetch("/api/documents", {
+        const saveRes = await fetch("/api/documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -226,8 +227,17 @@ export default function UploadPage() {
             insights: fileInsights,
           }),
         });
+        const saveJson = await saveRes.json();
+        saved = saveJson.success === true;
       } catch {
-        // DB save is best-effort
+        // Network error
+      }
+
+      if (!saved) {
+        setJobs((prev) => prev.map((j, idx) =>
+          idx === i ? { ...j, status: "error", error: "Failed to save to database" } : j
+        ));
+        continue;
       }
 
       const netFlow = parsed.summary.netFlow;
