@@ -114,39 +114,6 @@ export function TransactionsTab({ categories, monthly, totalTransactions }: Tran
     return monthly.find((m) => m.month === monthFilter) ?? null;
   }, [monthly, monthFilter]);
 
-  const allTransactions = useMemo(() => {
-    const all = computedCategories.flatMap((cat) =>
-      cat.transactions.map((tx) => ({
-        ...tx,
-        primaryCategory: cat.category,
-      }))
-    );
-    const seen = new Set<string>();
-    let filtered = all.filter((tx) => {
-      if (seen.has(tx.id)) return false;
-      seen.add(tx.id);
-      return true;
-    });
-
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (tx) =>
-          tx.description.toLowerCase().includes(q) ||
-          categoryLabel(tx.primaryCategory).toLowerCase().includes(q)
-      );
-    }
-
-    if (activeCategory) {
-      filtered = filtered.filter((tx) => tx.primaryCategory === activeCategory);
-    }
-
-    filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    return filtered;
-  }, [computedCategories, searchQuery, activeCategory]);
-
-  const displayedTransactions = allTransactions.slice(0, 20);
-
   return (
     <div>
       {/* Top bar */}
@@ -253,61 +220,6 @@ export function TransactionsTab({ categories, monthly, totalTransactions }: Tran
         />
       </div>
 
-      {/* Transaction list */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-zinc-900 uppercase tracking-wider">
-            {searchQuery || activeCategory ? "Filtered transactions" : "Recent transactions"}
-          </h2>
-          <span className="text-xs text-zinc-400">{allTransactions.length} matching</span>
-        </div>
-
-        <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
-          {displayedTransactions.length > 0 ? (
-            <div className="divide-y divide-zinc-100">
-              {displayedTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between px-4 py-2.5 hover:bg-zinc-50 transition-colors select-text"
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <span className="text-xs font-mono text-zinc-400 w-24 flex-shrink-0">
-                      {formatDate(tx.date)}
-                    </span>
-                    <span className="text-xs text-zinc-700 truncate max-w-[200px]">
-                      {tx.description}
-                    </span>
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 flex-shrink-0">
-                      {categoryLabel(tx.primaryCategory)}
-                    </span>
-                  </div>
-                  <span
-                    className={`text-xs font-mono ml-3 flex-shrink-0 tabular-nums ${
-                      tx.type === "credit" ? "text-emerald-600" : "text-red-500"
-                    }`}
-                  >
-                    {tx.type === "credit" ? "+" : "-"}
-                    {formatCurrency(tx.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-400 text-center py-6">
-              {searchQuery || activeCategory
-                ? "No transactions match your search."
-                : "No transactions yet."}
-            </p>
-          )}
-        </div>
-
-        {/* "View more" indicator */}
-        {allTransactions.length > 20 && (
-          <p className="text-xs text-zinc-400 text-center mt-2">
-            Showing 20 of {allTransactions.length.toLocaleString()} matching transactions
-          </p>
-        )}
-      </div>
     </div>
   );
 }

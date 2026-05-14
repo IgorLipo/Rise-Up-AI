@@ -9,7 +9,6 @@ import { DateRangeSelector, type DateRangePreset } from "@/components/dashboard/
 import { TabNavigation } from "@/components/dashboard/tab-navigation";
 import { ForecastTab } from "@/components/dashboard/forecast-tab";
 import { HistoryTab } from "@/components/dashboard/history-tab";
-import { IntelligenceTab } from "@/components/dashboard/intelligence-tab";
 import { TransactionsTab } from "@/components/dashboard/transactions-tab";
 
 interface AggregateResponse {
@@ -322,7 +321,6 @@ function DashboardContent() {
   const TABS = [
     { id: "forecast", label: "Current Forecast" },
     { id: "history", label: "Monthly History" },
-    { id: "intelligence", label: "Accumulated Intelligence" },
     { id: "transactions", label: "Transactions" },
   ];
 
@@ -406,18 +404,6 @@ function DashboardContent() {
             categories={data.categories}
             suspicious={data.suspicious}
             onViewTransactions={(month) => router.push(`/transactions?month=${month}`)}
-          />
-        </div>
-      )}
-
-      {activeTab === "intelligence" && (
-        <div className="mt-5">
-          <IntelligenceTab
-            vendors={data.vendors}
-            crossMonthInsights={data.crossMonthInsights}
-            patterns={data.patterns}
-            entities={data.entities}
-            newVendors={data.newVendors}
           />
         </div>
       )}

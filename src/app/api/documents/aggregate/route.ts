@@ -7,6 +7,7 @@ import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
 import type { VendorIntelEntry } from "@/lib/vendor-intel";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
+import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
 import { extractEntities, entityAttributesForVendor } from "@/lib/detection/entity-extractor";
 import type { AIClassification } from "@/lib/detection/ai-classifier";
 import { validateStatementBalance } from "@/lib/financial/math";
@@ -622,7 +623,8 @@ async function computeAggregate(
     if (tx.type !== "debit") continue;
     const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
-    const subcategory = vendor?.subcategory ?? tx.subcategory ?? "uncategorized";
+    const storedSubcategory = tx.subcategory && tx.subcategory !== "uncategorized" ? tx.subcategory : null;
+    const subcategory = vendor?.subcategory ?? storedSubcategory ?? classifySubcategory(tx.description).subcategory;
     if (!categoryMap.has(subcategory)) {
       categoryMap.set(subcategory, { total: 0, count: 0, transactions: [] });
     }
