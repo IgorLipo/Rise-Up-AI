@@ -81,11 +81,12 @@ export function learnFromHistory(
   const vendorMap = new Map<string, VendorLearning>();
 
   for (const tx of transactions) {
-    const core = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    const normalized = normalizeMerchant(tx.description);
+    const core = coreMerchant(normalized).toLowerCase();
     if (!core || core.length < 2) continue;
 
     if (!vendorMap.has(core)) {
-      const classification = classifySubcategory(tx.description);
+      const classification = classifySubcategory(normalized);
       vendorMap.set(core, {
         canonicalName: core,
         aliases: [tx.description],

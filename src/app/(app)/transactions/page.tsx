@@ -354,9 +354,13 @@ function TransactionsPageInner() {
 
             return (
               <div key={tx.id}>
-                <button
+                <div
                   onClick={() => setSelectedTx(isSelected ? null : tx)}
-                  className={`w-full grid grid-cols-[1fr_100px_90px] gap-3 px-4 py-2.5 text-xs border-b border-zinc-50 hover:bg-zinc-50 transition-colors text-left ${
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedTx(isSelected ? null : tx); } }}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isSelected}
+                  className={`w-full grid grid-cols-[1fr_100px_90px] gap-3 px-4 py-2.5 text-xs border-b border-zinc-50 hover:bg-zinc-50 transition-colors text-left cursor-pointer select-text ${
                     isSelected ? "bg-zinc-50" : ""
                   }`}
                 >
@@ -391,7 +395,7 @@ function TransactionsPageInner() {
                     {tx.type === "credit" ? "+" : "-"}
                     {formatCurrency(tx.amount)}
                   </div>
-                </button>
+                </div>
 
                 {/* Expandable explainability panel */}
                 {isSelected && (
