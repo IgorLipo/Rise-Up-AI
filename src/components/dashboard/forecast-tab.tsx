@@ -50,12 +50,16 @@ interface ForecastTabProps {
     differencePence: number;
     message: string;
   } | null;
+  monthlyOneOffExpenseAvg?: number;
+  monthlyOneOffIncomeAvg?: number;
+  oneOffHistoryMonths?: number;
 }
 
 export function ForecastTab(props: ForecastTabProps) {
   const {
     currentPosition, forecast, accumulated, categories, patterns,
     totalDocuments, totalTransactions, statementInfo, balanceValidation,
+    monthlyOneOffExpenseAvg, monthlyOneOffIncomeAvg, oneOffHistoryMonths,
   } = props;
 
   return (
@@ -154,6 +158,29 @@ export function ForecastTab(props: ForecastTabProps) {
                 {formatCurrency(forecast.calculationAudit.predictedRangeHigh)}
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly one-off buffer */}
+      {monthlyOneOffExpenseAvg !== undefined && monthlyOneOffExpenseAvg > 0 && oneOffHistoryMonths !== undefined && oneOffHistoryMonths > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="text-xs text-blue-500 uppercase tracking-wider font-medium mb-2">
+            Monthly one-off buffer
+          </div>
+          <div className="text-sm text-blue-800 mb-2">
+            Based on {oneOffHistoryMonths} month{oneOffHistoryMonths !== 1 ? "s" : ""} of history, you typically have{" "}
+            <span className="font-semibold">{formatCurrency(monthlyOneOffExpenseAvg)}</span> in one-off
+            expenses each month that aren&apos;t included in the daily forecast.
+          </div>
+          {monthlyOneOffIncomeAvg !== undefined && monthlyOneOffIncomeAvg > 0 && (
+            <div className="text-xs text-blue-600">
+              One-off income averages {formatCurrency(monthlyOneOffIncomeAvg)}/month.
+            </div>
+          )}
+          <div className="text-xs text-blue-400 mt-2 italic">
+            These are real expenses from your history that don&apos;t repeat — keep them in mind
+            when planning your cashflow.
           </div>
         </div>
       )}

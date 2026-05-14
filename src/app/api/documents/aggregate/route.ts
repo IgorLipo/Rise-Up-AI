@@ -701,6 +701,9 @@ async function computeAggregate(
           catchUpEstimate,
           calculationAudit: forecast.calculationAudit,
           forecastMode,
+          monthlyOneOffExpenseAvg: learningReport.monthlyOneOffExpenseAvg,
+          monthlyOneOffIncomeAvg: learningReport.monthlyOneOffIncomeAvg,
+          oneOffHistoryMonths: learningReport.totalMonths,
         }
       : null,
 

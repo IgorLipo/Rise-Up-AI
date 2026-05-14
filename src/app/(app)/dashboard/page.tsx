@@ -50,6 +50,9 @@ interface AggregateResponse {
   };
   forecast: (MonthEndForecast & {
     forecastMode?: { isLowConfidence: boolean; reason: string | null };
+    monthlyOneOffExpenseAvg?: number;
+    monthlyOneOffIncomeAvg?: number;
+    oneOffHistoryMonths?: number;
   }) | null;
   forecastError?: string | null;
   monthly: Array<{
@@ -384,6 +387,9 @@ function DashboardContent() {
             totalTransactions={data.totalTransactions}
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
+            monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
+            monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
+            oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
           />
         </div>
       )}
@@ -434,6 +440,9 @@ function DashboardContent() {
             totalTransactions={data.totalTransactions}
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
+            monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
+            monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
+            oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
           />
         </div>
       )}

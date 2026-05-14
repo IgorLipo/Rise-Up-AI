@@ -55,6 +55,8 @@ export interface LearningReport {
   totalMonths: number;
   totalVendors: number;
   totalTransactions: number;
+  monthlyOneOffExpenseAvg: number;
+  monthlyOneOffIncomeAvg: number;
 }
 
 // Group transactions by calendar month
@@ -224,6 +226,20 @@ export function learnFromHistory(
     }
   }
 
+  // Monthly one-off averages (display-only — not injected into forecast)
+  let totalOneOffExpense = 0;
+  let totalOneOffIncome = 0;
+  for (const name of oneOffExpenseCandidates) {
+    const vendor = vendorMap.get(name);
+    if (vendor) totalOneOffExpense += vendor.amounts.reduce((s, a) => s + a, 0);
+  }
+  for (const name of oneOffIncomeCandidates) {
+    const vendor = vendorMap.get(name);
+    if (vendor) totalOneOffIncome += vendor.amounts.reduce((s, a) => s + a, 0);
+  }
+  const monthlyOneOffExpenseAvg = byMonth.length > 0 ? totalOneOffExpense / byMonth.length : 0;
+  const monthlyOneOffIncomeAvg = byMonth.length > 0 ? totalOneOffIncome / byMonth.length : 0;
+
   // Cross-month insights
   const crossMonthInsights: CrossMonthInsight[] = [];
   if (byMonth.length >= 2) {
@@ -306,6 +322,8 @@ export function learnFromHistory(
     totalMonths: byMonth.length,
     totalVendors: vendorMap.size,
     totalTransactions: transactions.length,
+    monthlyOneOffExpenseAvg,
+    monthlyOneOffIncomeAvg,
   };
 }
 

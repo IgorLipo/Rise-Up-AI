@@ -98,6 +98,16 @@ export function getConfidenceTier(score: number): ConfidenceTier {
   return "low";
 }
 
+/**
+ * Detects recurring patterns and one-off transactions from the provided transaction set.
+ *
+ * IMPORTANT: One-off classification here is PROVISIONAL — it is based only on the
+ * transactions passed to this function. A merchant appearing once in this call's data
+ * will be marked as one-off here. The cross-month learner (learnFromHistory) is the
+ * AUTHORITATIVE source: it classifies a vendor as one-off only if appearanceCount &lt; 2
+ * across ALL statements ever uploaded. For forecast/display purposes, rely on the
+ * cross-month learner's oneOffCandidates, not the pattern detector's oneOffExpenses/oneOffIncome.
+ */
 export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
   // Group by core merchant
   const groups = new Map<string, Transaction[]>();
