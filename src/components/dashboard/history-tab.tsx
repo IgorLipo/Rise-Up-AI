@@ -49,6 +49,9 @@ export function HistoryTab({ monthly, accumulated, categories, suspicious, onVie
           const monthSuspicious = suspicious.filter((s) => s.date?.slice(0, 7) === m.month);
           const cardData: MonthCardData = {
             ...m,
+            statementPeriod: m.dataFrom && m.dataTo
+              ? { from: m.dataFrom, to: m.dataTo }
+              : undefined,
             unusualItems: monthSuspicious.length > 0
               ? monthSuspicious.map((s) => ({
                   description: s.merchant || s.description,

@@ -50,7 +50,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   supplies: "Shopping",
   subscriptions: "Subscriptions",
   "property-income": "Other Income",
-  "one-off": "One-off / Uncategorized",
+  "one-off": "One-off",
+  "uncategorized": "Uncategorized",
 };
 
 function categoryLabel(key: string): string {

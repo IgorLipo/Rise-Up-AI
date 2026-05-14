@@ -27,6 +27,7 @@ const SUBCATEGORIES: Array<{ value: Subcategory | "all" | "suspicious"; label: s
   { value: "property-management", label: "Property" },
   { value: "professional-services", label: "Services" },
   { value: "one-off", label: "One-off" },
+  { value: "uncategorized", label: "Uncategorized" },
   { value: "suspicious", label: "Flagged" },
 ];
 
@@ -65,7 +66,7 @@ function TransactionsPageInner() {
   const [loading, setLoading] = useState(true);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [correctingTx, setCorrectingTx] = useState<string | null>(null);
-  const [correctionSubcategory, setCorrectionSubcategory] = useState<Subcategory>("one-off");
+  const [correctionSubcategory, setCorrectionSubcategory] = useState<Subcategory>("uncategorized");
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
@@ -212,7 +213,7 @@ function TransactionsPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transactionDescription: tx.description,
-          originalSubcategory: tx.subcategory ?? "one-off",
+          originalSubcategory: tx.subcategory ?? "uncategorized",
           correctedSubcategory: correctionSubcategory,
           transactionDate: tx.date,
           transactionAmount: tx.amount,
@@ -480,7 +481,7 @@ function TransactionsPageInner() {
                             <button
                               onClick={() => {
                                 setCorrectingTx(tx.id);
-                                setCorrectionSubcategory((vendor?.subcategory as Subcategory) ?? "one-off");
+                                setCorrectionSubcategory((vendor?.subcategory as Subcategory) ?? "uncategorized");
                               }}
                               className="text-[11px] text-zinc-400 hover:text-zinc-700 transition-colors"
                             >

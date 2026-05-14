@@ -100,7 +100,7 @@ export function generateDailyForecast(
     if (payment.confidenceTier === "low") continue;
 
     if (payment.nextExpected <= formatDate(monthEnd)) {
-      const tx = buildTx(payment, "", (payment as any).subcategory ?? "one-off");
+      const tx = buildTx(payment, "", (payment as any).subcategory ?? "uncategorized");
       addToDay(payment.nextExpected, tx, payment.confidenceTier === "medium");
     }
   }

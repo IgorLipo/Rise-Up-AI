@@ -5,7 +5,7 @@ export type Subcategory =
   | "travel" | "office-supplies" | "professional-services"
   | "director-loans" | "property-management" | "property-income"
   | "supplies" | "food-dining"
-  | "one-off";
+  | "one-off" | "uncategorized";
 
 interface ClassificationResult {
   category: string;
@@ -39,6 +39,12 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\buber\s*eats?\b/i,
     /\brestaurant\b/i,
     /\btakeaway\b/i,
+	    /\bbru\s+(?:oadby|leicester)\b/i,
+    /\boadby\b/i,                        // Oadby (Leicester suburb, food/dining area)
+    /\bkonak\b/i,                        // Konak restaurant chain (Leicester)
+    /\bkelly.?s?\s*corner\b/i,           // Kelly's Corner (food)
+    /\bpapa\s*john/i,                    // Papa John's pizza
+    /\bkrispy\s*kreme\b/i,               // Krispy Kreme
     /\bcaf[ée]\b/i,
     /\bbakery\b/i,
     /\bsandwich\b/i,
@@ -74,7 +80,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /amazon\s*prime/i,
     /prime\s*video/i,
     /\bspotify\b/i,
-    /\bpuregym\b/i,
+    /\bpure\s*gym\b/i,
     /the\s*gym\s*group/i,
     /monday\.com/i,
     /pdfleader/i,
@@ -90,7 +96,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bbp\b(?!\s*(energy|electric))/i,
     /tesco\s*pay\s*(at|@)\s*pump/i,
     /asda\s*petrol/i,
-    /\bmfg\b.*\b(petrol|fuel|forecourt)\b/i,
+    /\bmfg\b/i,
     /sainsbury.*petrol/i,
     /\bapplegreen\b/i,
     /\besso\b/i,
@@ -99,6 +105,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bfuel\b/i,
     /\bdiesel\b/i,
     /\bpaybyphone\b/i,                   // Parking payment app
+    /\bcar\s*repayment\b/i,              // Car repayment plan
 	    /\bfilling\s*(?:station|stn)\b/i,
     /\bauto\s*repair\b/i,
     /\btyre\b/i,
@@ -120,6 +127,8 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bsequoia\s*property\b/i,
     /\btranquil\s*accommoda\b/i,
     /\baccommoda\b/i,
+    /\bmahil\b/i,                        // Common property landlord name
+	    /\bhomebound\b/i,
     /\bletting\b/i,
     /\bproperty\s*(management|maint|service|group|rental)\b/i,
     /\bestate\s*agent\b/i],
@@ -140,16 +149,23 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bbusiness\s*rates\b/i,
     /\bnon-domestic\s*rates\b/i,
     /\bhbbc\b/i,                        // Hinckley & Bosworth Borough Council
+    /\bpensions?\s*regulat/i,              // The Pensions Regulator
 	    /\bcouncil\b(?!\s*estate)/i,        // "Council" but not "council estate"
     /\bcou\b(?!\s*(?:estate|property|house))\b/i],  // "COU" abbreviation for council
   "director-loans": [/director.?loan|dla|dlj/i],
   loans: [/loan repayment|bank loan|business loan|bounce back loan|cbils|capify|\bloan\b|funding circle|iwoca|capital on tap|\bfinance\s*(?:company|plc|ltd|house|group|solution)\b/i],
-  "supplier-payments": [/supplier|wholesale|distributor|inventory|stock purchase/i],
+  "supplier-payments": [/supplier|wholesale|distributor|inventory|stock purchase|\binv\b|\binvoice\b/i],
   utilities: [/aerial|electric|gas |energy |water |broadband|internet|phone bill|ovo energy|british gas|e\.on|edf|scottish\s*power|severn trent|thames water|virgin media|vodafone|ee |o2 |three |talktalk|bt group|octopus|utility warehouse|anglian water|yorkshire water|welsh water/i],
   "bank-fees": [/overdraft fee|account fee|service charge|bank charge|transaction fee|monthly fee|unpaid item|arranged overdraft/i],
-  insurance: [/insurance|public liability|professional indemnity|simply business|hiscox|axa|aviva|churchill|direct line/i],
+  insurance: [/insurance|public liability|professional indemnity|simply business|hiscox|axa|aviva|churchill|direct line|zurich|premium credit|vitality\s*health/i],
   marketing: [/google ads|facebook ads|instagram ads|linkedin ads|advertising|marketing|sponsored|ad campaign/i],
   travel: [/flight|hotel|airbnb|booking\.com|trainline|travelodge|premier inn|car hire|enterprise rent|avis |hertz|ba flight|easyjet|ryanair|\buber\s*(?!eats?\b)/i,
+    // Hotels
+    /\bnovotel\b/i,
+    /\bholiday\s*inn\b/i,
+    /\b(?:marriott|hilton|ibis|radisson|ramada|comfort\s*inn|days\s*inn|jurys\s*inn)\b/i,
+    /\baccommodation\b/i,
+    /\btfl\b/i,                           // Transport for London
     // Motorway service stations
     /\bmoto\b(?!.*(repair|service|parts|tyre|tyres))/i,
     /\bwelcome\s*break\b/i,
@@ -159,24 +175,29 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\btoddington\b(?!\s*(?:north|south|east|west|road|street|lane))/i,
     /\bservices?\s*(?:station|stop|area)\b/i],
   "office-supplies": [/stationery|office supplies|printer|ink |toner|viking direct|staples|ryman|banner|vistaprint|printed\.com/i],
-  "professional-services": [/accountant|accountancy|solicitor|lawyer|legal |consultant|consulting|auditor|bookkeeper|bookkeeping|cleaning|cleaner/i],
-  supplies: [/tesco|sainsbury|asda|morrisons|aldi|lidl|waitrose|ocado|co-op|supermarket|grocer|b&q|wickes|screwfix|toolstation|homebase|ikea|currys|argos|amazon|marks?\s*(?:&|and)\s*spencer|john\s*lewis|debenhams|boots\b|superdrug|wilko|poundland|home\s*bargains|b&m\b/i],
+  "professional-services": [/accountant|accountancy|solicitor|lawyer|legal |consultant|consulting|auditor|bookkeeper|bookkeeping|cleaning|cleaner|security|electrical|plumbing|plumber|surveyor|surveying|cctv|alarm|maintenance|repair|\baccount(?:ing|ancy)\s*service\b/i],
+  supplies: [/tesco|sainsbury|asda|morrisons|aldi|lidl|waitrose|ocado|co-op|supermarket|grocer|b&q|wickes|screwfix|toolstation|homebase|ikea|currys|argos|amazon|marks?\s*(?:&|and)\s*spencer|john\s*lewis|debenhams|boots\b|superdrug|wilko|poundland|home\s*bargains|b&m\b|dunelm|power\s*appliances?/i],
   "property-income": [/rent.*income|property.*income|accommodation.*income|housing.*benefit/i],
-  "one-off": [/./],
+  // "one-off" is determined by appearance count in the cross-month learner,
+  // not by keyword matching. A vendor with exactly 1 occurrence = one-off.
+  "one-off": [],
+  "uncategorized": [/./],
 };
 
 export function classifySubcategory(description: string): ClassificationResult {
-  // Iterate in priority order — first match wins (except one-off)
+  // Iterate in priority order — first match wins (except uncategorized catch-all)
   const entries = Object.entries(SUBCATEGORY_KEYWORDS) as [Subcategory, RegExp[]][];
   for (const [subcategory, patterns] of entries) {
-    if (subcategory === "one-off") continue;
+    if (subcategory === "uncategorized" || subcategory === "one-off") continue;
     for (const pattern of patterns) {
       if (pattern.test(description)) {
         return { category: mapToCategory(subcategory), subcategory, confidence: 0.7 };
       }
     }
   }
-  return { category: "Uncategorized", subcategory: "one-off", confidence: 0.4 };
+  // No keyword match — truly unknown. The cross-month learner determines
+  // whether this is a one-off (1 occurrence) or recurring-uncategorized (2+).
+  return { category: "Uncategorized", subcategory: "uncategorized", confidence: 0.1 };
 }
 
 function mapToCategory(sub: Subcategory): string {
@@ -201,7 +222,8 @@ function mapToCategory(sub: Subcategory): string {
     "property-income": "Other Income",
     supplies: "Shopping",
     "food-dining": "Food & Dining",
-    "one-off": "Uncategorized",
+    "one-off": "One-Off",
+    "uncategorized": "Uncategorized",
   };
   return mapping[sub];
 }

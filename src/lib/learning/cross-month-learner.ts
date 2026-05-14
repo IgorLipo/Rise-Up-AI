@@ -111,10 +111,12 @@ export function learnFromHistory(
     } else {
       const v = vendorMap.get(core)!;
       v.allDescriptions.push(tx.description);
-      // Re-classify one-off vendors when later descriptions match patterns
-      if (v.subcategory === "one-off") {
+      // Re-classify uncategorized and one-off vendors when later descriptions match patterns.
+      // One-off may have been set by a previous run (stale DB state) — a vendor with
+      // 2+ occurrences is NOT a one-off, so give the classifier another chance.
+      if (v.subcategory === "uncategorized" || v.subcategory === "one-off") {
         const classification = classifySubcategory(normalized);
-        if (classification.subcategory !== "one-off") {
+        if (classification.subcategory !== "uncategorized" && classification.subcategory !== "one-off") {
           v.subcategory = classification.subcategory;
           v.category = classification.category;
         }
@@ -162,8 +164,10 @@ export function learnFromHistory(
   const suspiciousCandidates: VendorLearning[] = [];
 
   for (const vendor of vendorMap.values()) {
-    // Only found once = one-off candidate
+    // Only found once = genuine one-off. Force subcategory.
     if (vendor.appearanceCount < 2) {
+      vendor.subcategory = "one-off";
+      vendor.category = "Uncategorized";
       oneOffCandidates.push(vendor.canonicalName);
       if (vendor.direction === "income") {
         oneOffIncomeCandidates.push(vendor.canonicalName);
@@ -173,6 +177,13 @@ export function learnFromHistory(
         oneOffExpenseCandidates.push(vendor.canonicalName);
       }
       continue;
+    }
+
+    // 2+ occurrences but still uncategorized — keep as uncategorized for review,
+    // NOT one-off. One-off means literally appeared only once.
+    if (vendor.subcategory === "uncategorized" && vendor.direction === "expense") {
+      vendor.subcategory = "uncategorized";
+      vendor.category = "Uncategorized";
     }
 
     // Multiple appearances across months → recurring
@@ -381,8 +392,8 @@ export function buildVendorIntelEntries(
       isBusiness: isSuspicious ? false : null,
       isSuspicious,
       isPersonal: false,
-      needsReview: isSuspicious,
-      includeInForecast: vendor.isRecurring && !isSuspicious,
+      needsReview: isSuspicious || vendor.subcategory === "uncategorized",
+      includeInForecast: vendor.isRecurring && !isSuspicious && vendor.subcategory !== "uncategorized",
       aiExplanation: existing?.aiExplanation ?? null,
       confidence,
       source: existing?.source ?? "system",

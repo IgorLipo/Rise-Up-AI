@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 import type { DailyForecast } from "@/lib/forecast";
 
@@ -103,10 +103,9 @@ export function DailyForecastChart({ data }: Props) {
 
   const chartData = data.map((d) => ({
     date: new Date(d.date).getDate(),
-    balance: d.closingBalance,
-    income: d.expectedIncome > 0 ? d.closingBalance : 0,
-    expense: d.expectedExpenses > 0 ? d.closingBalance : 0,
-    risk: d.riskFlag ? d.closingBalance : 0,
+    income: d.expectedIncome,
+    expense: d.expectedExpenses,
+    risk: d.riskFlag,
     full: d,
   }));
 
@@ -137,17 +136,11 @@ export function DailyForecastChart({ data }: Props) {
               fontSize: "12px",
               color: "#18181b",
             }}
-            formatter={(value) => [formatCurrency(Number(value) || 0), "Balance"]}
+            formatter={(value, name) => [formatCurrency(Number(value) || 0), name === "income" ? "Income" : "Expenses"]}
             labelFormatter={(day) => `Day ${day}`}
           />
-          <Bar dataKey="balance" radius={[2, 2, 0, 0]}>
-            {chartData.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.full.riskFlag ? "#f59e0b" : entry.full.expectedExpenses > 0 ? "#ef4444" : "#22c55e"}
-              />
-            ))}
-          </Bar>
+          <Bar dataKey="income" radius={[2, 2, 0, 0]} fill="#22c55e" />
+          <Bar dataKey="expense" radius={[2, 2, 0, 0]} fill="#ef4444" />
         </BarChart>
       </ResponsiveContainer>
       <div className="flex gap-4 mt-2 text-[10px] text-zinc-500">

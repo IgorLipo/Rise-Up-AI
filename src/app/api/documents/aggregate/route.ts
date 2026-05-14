@@ -133,7 +133,7 @@ async function computeAggregate(
   // ── Accurate counts from statement_history (deduplicated) ──
   const { data: statementHistory } = await supabase
     .from("statement_history")
-    .select("statement_period_start, statement_period_end, transaction_count")
+    .select("statement_period_start, statement_period_end, transaction_count, opening_balance, closing_balance, total_income, total_expenses")
     .eq("company_id", companyId)
     .eq("parse_status", "ok")
     .order("uploaded_at", { ascending: false });
@@ -318,6 +318,7 @@ async function computeAggregate(
   }
 
   // ── Balance ──
+  // Find the document with the latest statement period
   let latestDoc = docs[0];
   let latestStmt = latestDoc.statement_data as unknown as StatementData;
   let latestPeriodTo = latestStmt?.accountInfo?.statementPeriod?.to ?? "";
@@ -331,7 +332,56 @@ async function computeAggregate(
     }
   }
 
-  const latestClosingBalance = latestStmt?.accountInfo?.closingBalance;
+  // Determine closing balance with fallbacks for old documents missing the field
+  let latestClosingBalance: number | undefined = latestStmt?.accountInfo?.closingBalance;
+
+  // Fallback 1: compute from openingBalance + net cash flow (statement-level totals)
+  if (latestClosingBalance == null && latestStmt?.accountInfo?.openingBalance != null) {
+    const credits = latestStmt.summary?.totalCredits ?? 0;
+    const debits = latestStmt.summary?.totalDebits ?? 0;
+    latestClosingBalance = latestStmt.accountInfo.openingBalance + credits - debits;
+  }
+
+  // Fallback 2: search docs (newest-first by period) for one with a known closingBalance
+  if (latestClosingBalance == null) {
+    const byPeriodDesc = [...docs].sort((a, b) => {
+      const aTo = (a.statement_data as unknown as StatementData)?.accountInfo?.statementPeriod?.to ?? "";
+      const bTo = (b.statement_data as unknown as StatementData)?.accountInfo?.statementPeriod?.to ?? "";
+      return bTo.localeCompare(aTo);
+    });
+    for (const doc of byPeriodDesc) {
+      const cb = (doc.statement_data as unknown as StatementData)?.accountInfo?.closingBalance;
+      if (cb != null) {
+        latestClosingBalance = cb;
+        break;
+      }
+    }
+  }
+
+  // Fallback 3: use statement_history (authoritative after db.ts fix).
+  // Find the entry with the latest statement_period_end, not the most recently uploaded.
+  if (latestClosingBalance == null) {
+    let bestClosing: number | undefined;
+    let bestPeriodEnd = "";
+    for (const row of statementHistory ?? []) {
+      const r = row as Record<string, unknown>;
+      const periodEnd = (r.statement_period_end as string) ?? "";
+      if (periodEnd > bestPeriodEnd) {
+        bestPeriodEnd = periodEnd;
+        const shClosing = r.closing_balance;
+        if (shClosing != null && Number(shClosing) !== 0) {
+          bestClosing = Number(shClosing);
+        } else {
+          const opening = Number(r.opening_balance ?? 0);
+          const income = Number(r.total_income ?? 0);
+          const expenses = Number(r.total_expenses ?? 0);
+          bestClosing = opening + income - expenses;
+        }
+      }
+    }
+    latestClosingBalance = bestClosing;
+  }
+
   const latestPeriodFrom = latestStmt?.accountInfo?.statementPeriod?.from ?? "";
 
   const currentPosition = {
@@ -343,26 +393,34 @@ async function computeAggregate(
     statementPeriodEnd: latestPeriodTo || null as string | null,
   };
 
+  // Prefer statement_history totals (statement-header values) over transaction sums.
+  // Fall back to computing from transactions when statement_history row is missing.
+  const latestHistoryRow = (statementHistory ?? []).find(
+    (row) => row.statement_period_start === latestPeriodFrom && row.statement_period_end === latestPeriodTo
+  );
+  const stmtTotalIncome = latestHistoryRow?.total_income != null
+    ? Number(latestHistoryRow.total_income)
+    : latestStmt?.transactions?.filter((t: { type: string }) => t.type === "credit").reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null;
+  const stmtTotalExpenses = latestHistoryRow?.total_expenses != null
+    ? Number(latestHistoryRow.total_expenses)
+    : latestStmt?.transactions?.filter((t: { type: string }) => t.type === "debit").reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null;
+
   let balanceValidation: { valid: boolean; differencePence: number; message: string } | null = null;
   if (latestClosingBalance != null && latestStmt?.accountInfo) {
-    const opening = latestStmt.accountInfo.openingBalance ?? 0;
-    const credits = latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "credit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? 0;
-    const debits = latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "debit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? 0;
+    const opening = latestHistoryRow?.opening_balance != null
+      ? Number(latestHistoryRow.opening_balance)
+      : latestStmt.accountInfo.openingBalance ?? 0;
+    const credits = stmtTotalIncome ?? 0;
+    const debits = stmtTotalExpenses ?? 0;
     balanceValidation = validateStatementBalance(opening, credits, debits, latestClosingBalance);
   }
 
   const statementInfo = latestStmt ? {
-    openingBalance: latestStmt.accountInfo?.openingBalance ?? null as number | null,
-    totalIncome: latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "credit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null as number | null,
-    totalExpenses: latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "debit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null as number | null,
+    openingBalance: latestHistoryRow?.opening_balance != null
+      ? Number(latestHistoryRow.opening_balance)
+      : latestStmt.accountInfo?.openingBalance ?? null as number | null,
+    totalIncome: stmtTotalIncome as number | null,
+    totalExpenses: stmtTotalExpenses as number | null,
     closingBalance: latestClosingBalance ?? null as number | null,
     periodFrom: latestPeriodFrom || null as string | null,
     periodTo: latestPeriodTo || null as string | null,
@@ -552,7 +610,7 @@ async function computeAggregate(
     if (tx.type !== "debit") continue;
     const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
-    const subcategory = vendor?.subcategory ?? tx.subcategory ?? "one-off";
+    const subcategory = vendor?.subcategory ?? tx.subcategory ?? "uncategorized";
     if (!categoryMap.has(subcategory)) {
       categoryMap.set(subcategory, { total: 0, count: 0, transactions: [] });
     }
@@ -716,7 +774,7 @@ async function computeAggregate(
     patterns: {
       recurringExpenses: displayPatterns.recurringExpenses.map((p) => ({
         merchant: (p as any).merchant,
-        subcategory: (p as any).subcategory ?? "one-off",
+        subcategory: (p as any).subcategory ?? "uncategorized",
         typicalAmount: p.typicalAmount,
         interval: p.interval,
         confidence: p.confidence,
@@ -757,7 +815,7 @@ async function computeAggregate(
           date: vendor?.dates[0] ?? "",
           amount: vendor?.amounts[0] ?? 0,
           description: vendor?.allDescriptions[0] ?? name,
-          subcategory: vendor?.subcategory ?? "one-off",
+          subcategory: vendor?.subcategory ?? "uncategorized",
         };
       }),
       oneOffIncome: displayOneOffIncomeCandidates.map((name) => {
@@ -767,7 +825,7 @@ async function computeAggregate(
           date: vendor?.dates[0] ?? "",
           amount: vendor?.amounts[0] ?? 0,
           description: vendor?.allDescriptions[0] ?? name,
-          subcategory: vendor?.subcategory ?? "one-off",
+          subcategory: vendor?.subcategory ?? "uncategorized",
         };
       }),
       oneOffExpenses: displayOneOffExpenseCandidates.map((name) => {
@@ -777,7 +835,7 @@ async function computeAggregate(
           date: vendor?.dates[0] ?? "",
           amount: vendor?.amounts[0] ?? 0,
           description: vendor?.allDescriptions[0] ?? name,
-          subcategory: vendor?.subcategory ?? "one-off",
+          subcategory: vendor?.subcategory ?? "uncategorized",
         };
       }),
     },
