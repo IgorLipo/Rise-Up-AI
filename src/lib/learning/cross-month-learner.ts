@@ -111,6 +111,14 @@ export function learnFromHistory(
     } else {
       const v = vendorMap.get(core)!;
       v.allDescriptions.push(tx.description);
+      // Re-classify one-off vendors when later descriptions match patterns
+      if (v.subcategory === "one-off") {
+        const classification = classifySubcategory(normalized);
+        if (classification.subcategory !== "one-off") {
+          v.subcategory = classification.subcategory;
+          v.category = classification.category;
+        }
+      }
       if (!v.aliases.includes(tx.description)) {
         v.aliases.push(tx.description);
       }

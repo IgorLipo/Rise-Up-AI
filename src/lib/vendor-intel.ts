@@ -501,6 +501,11 @@ export async function ensureCompleteVendorIntel(
       existing.monthsSeen = vendor.months;
       existing.isFirstSeen = false;
       existing.direction = vendor.direction;
+      // Update subcategory if live classification differs (unless user-set)
+      if (existing.source !== "user" && vendor.subcategory !== "one-off" && vendor.subcategory !== existing.subcategory) {
+        existing.subcategory = vendor.subcategory as any;
+        existing.category = vendor.category;
+      }
       allEntries.push(existing);
     } else {
       // New vendor — research with AI
