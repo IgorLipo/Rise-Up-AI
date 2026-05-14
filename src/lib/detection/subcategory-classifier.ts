@@ -98,7 +98,8 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bpetrol\b/i,
     /\bfuel\b/i,
     /\bdiesel\b/i,
-    /\bfilling\s*(?:station|stn)\b/i,
+    /\bpaybyphone\b/i,                   // Parking payment app
+	    /\bfilling\s*(?:station|stn)\b/i,
     /\bauto\s*repair\b/i,
     /\btyre\b/i,
     /\bmechanic\b/i,
@@ -111,7 +112,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bvehicle\s*(tax|insurance|repair)\b/i,
     /\brac\b/i,
     /\baa\s*(car|breakdown|insurance)\b/i],
-  "property-management": [/property management|property maint|estate agent|sequoia|nasim holdings|osiris property|online estate|property group|united92/i,
+  "property-management": [/property management|property maint|estate agent|sequoia|nasim holdings|osiris property|online estate|property group|properties|united92/i,
     /\bamha\s*leicester\b/i,
     /\bgreen\s*acres\b.*\bestate\b/i,
     /\bhaus\s*property\b/i,
@@ -138,12 +139,13 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bcouncil\s*tax\b/i,
     /\bbusiness\s*rates\b/i,
     /\bnon-domestic\s*rates\b/i,
-    /\bcouncil\b(?!\s*estate)/i,        // "Council" but not "council estate"
+    /\bhbbc\b/i,                        // Hinckley & Bosworth Borough Council
+	    /\bcouncil\b(?!\s*estate)/i,        // "Council" but not "council estate"
     /\bcou\b(?!\s*(?:estate|property|house))\b/i],  // "COU" abbreviation for council
   "director-loans": [/director.?loan|dla|dlj/i],
-  loans: [/loan repayment|bank loan|business loan|bounce back loan|cbils|capify|\bloan\b|funding circle|iwoca|\bfinance\s*(?:company|plc|ltd|house|group|solution)\b/i],
+  loans: [/loan repayment|bank loan|business loan|bounce back loan|cbils|capify|\bloan\b|funding circle|iwoca|capital on tap|\bfinance\s*(?:company|plc|ltd|house|group|solution)\b/i],
   "supplier-payments": [/supplier|wholesale|distributor|inventory|stock purchase/i],
-  utilities: [/electric|gas |energy |water |broadband|internet|phone bill|ovo energy|british gas|e\.on|edf|scottish\s*power|severn trent|thames water|virgin media|vodafone|ee |o2 |three |talktalk|bt group|octopus|utility warehouse|anglian water|yorkshire water|welsh water/i],
+  utilities: [/aerial|electric|gas |energy |water |broadband|internet|phone bill|ovo energy|british gas|e\.on|edf|scottish\s*power|severn trent|thames water|virgin media|vodafone|ee |o2 |three |talktalk|bt group|octopus|utility warehouse|anglian water|yorkshire water|welsh water/i],
   "bank-fees": [/overdraft fee|account fee|service charge|bank charge|transaction fee|monthly fee|unpaid item|arranged overdraft/i],
   insurance: [/insurance|public liability|professional indemnity|simply business|hiscox|axa|aviva|churchill|direct line/i],
   marketing: [/google ads|facebook ads|instagram ads|linkedin ads|advertising|marketing|sponsored|ad campaign/i],
