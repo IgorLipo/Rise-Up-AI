@@ -25,6 +25,7 @@ interface StatementSummary {
 interface MonthlySummary {
   month: string;
   label: string;
+  openingBalance: number;
   closingBalance: number;
   totalIncome: number;
   totalExpenses: number;
@@ -167,37 +168,43 @@ async function computeAggregate(
     };
   }
 
-  // Aggregate all transactions from all statements
+  // Aggregate all transactions from all statements (for learning/forecast)
   const allTransactions: Transaction[] = [];
   const statementSummaries: StatementSummary[] = [];
 
   for (const doc of docs) {
     const stmt = doc.statement_data as unknown as StatementData;
-    if (stmt?.transactions) {
-      allTransactions.push(...stmt.transactions);
-      const period = stmt.accountInfo?.statementPeriod
-        ? `${stmt.accountInfo.statementPeriod.from} to ${stmt.accountInfo.statementPeriod.to}`
-        : doc.filename;
-      const month = stmt.accountInfo?.statementPeriod?.from?.slice(0, 7)
-        ?? stmt.transactions[0]?.date?.slice(0, 7)
-        ?? doc.uploaded_at?.slice(0, 7)
-        ?? "unknown";
-      const income = stmt.transactions
-        .filter((t) => t.type === "credit")
-        .reduce((s, t) => s + t.amount, 0);
-      const expenses = stmt.transactions
-        .filter((t) => t.type === "debit")
-        .reduce((s, t) => s + t.amount, 0);
-      statementSummaries.push({
-        period,
-        month,
-        closingBalance: stmt.accountInfo?.closingBalance ?? 0,
-        transactionCount: stmt.transactions.length,
-        totalIncome: income,
-        totalExpenses: expenses,
-        netFlow: income - expenses,
-      });
-    }
+    if (!stmt?.transactions) continue;
+    allTransactions.push(...stmt.transactions);
+
+    const periodFrom = stmt.accountInfo?.statementPeriod?.from ?? "";
+    const periodTo = stmt.accountInfo?.statementPeriod?.to ?? "";
+    const period = periodFrom && periodTo ? `${periodFrom} to ${periodTo}` : doc.filename;
+
+    // Use statement_history totals for statement-level accuracy
+    const historyRow = (statementHistory ?? []).find(
+      (row) => row.statement_period_start === periodFrom && row.statement_period_end === periodTo
+    );
+    const income = historyRow?.total_income != null
+      ? Number(historyRow.total_income)
+      : stmt.transactions.filter((t) => t.type === "credit").reduce((s, t) => s + t.amount, 0);
+    const expenses = historyRow?.total_expenses != null
+      ? Number(historyRow.total_expenses)
+      : stmt.transactions.filter((t) => t.type === "debit").reduce((s, t) => s + t.amount, 0);
+    const closing = historyRow?.closing_balance != null
+      ? Number(historyRow.closing_balance)
+      : stmt.accountInfo?.closingBalance ?? 0;
+    const txCount = historyRow?.transaction_count ?? stmt.transactions.length;
+
+    statementSummaries.push({
+      period,
+      month: periodTo?.slice(0, 7) ?? "unknown",
+      closingBalance: closing,
+      transactionCount: txCount,
+      totalIncome: income,
+      totalExpenses: expenses,
+      netFlow: income - expenses,
+    });
   }
 
   // Apply date range filter to transactions
@@ -561,41 +568,46 @@ async function computeAggregate(
     return { isLowConfidence: false, reason: null };
   })();
 
-  // ── Monthly grouping ──
-  const byMonth = new Map<string, Transaction[]>();
-  for (const tx of workingTransactions) {
-    const m = tx.date.slice(0, 7);
-    if (!byMonth.has(m)) byMonth.set(m, []);
-    byMonth.get(m)!.push(tx);
-  }
-
+  // ── Monthly grouping (from statement_history — bank-verified totals) ──
   const monthlySummaries: MonthlySummary[] = [];
-  for (const [month, txs] of byMonth) {
-    const income = txs.filter((t) => t.type === "credit").reduce((s, t) => s + t.amount, 0);
-    const expenses = txs.filter((t) => t.type === "debit").reduce((s, t) => s + t.amount, 0);
-    const label = new Date(month + "-01").toLocaleDateString("en-GB", {
+  const seenMonthlyPeriods = new Set<string>();
+
+  for (const row of statementHistory ?? []) {
+    const periodKey = `${row.statement_period_start}|${row.statement_period_end}`;
+    if (seenMonthlyPeriods.has(periodKey)) continue;
+    seenMonthlyPeriods.add(periodKey);
+
+    const periodEnd = row.statement_period_end;
+    const month = periodEnd.slice(0, 7); // YYYY-MM of statement end date
+
+    const label = new Date(periodEnd + "T00:00:00").toLocaleDateString("en-GB", {
       year: "numeric",
       month: "long",
     });
 
-    // Determine completeness: count unique days with transactions
-    const uniqueDays = new Set(txs.map((t) => t.date)).size;
-    const totalDaysInMonth = new Date(parseInt(month.slice(0, 4)), parseInt(month.slice(5, 7)), 0).getDate();
-    const completeness: "complete" | "partial" = uniqueDays >= Math.min(15, totalDaysInMonth) ? "complete" : "partial";
+    const income = row.total_income != null ? Number(row.total_income) : 0;
+    const expenses = row.total_expenses != null ? Number(row.total_expenses) : 0;
+    const opening = row.opening_balance != null ? Number(row.opening_balance) : 0;
+    const closing = row.closing_balance != null ? Number(row.closing_balance) : 0;
+    const netFlow = income - expenses;
 
-    // Calculate actual data range for this month
-    const dates = txs.map((t) => t.date).sort();
-    const dataFrom = dates[0] ?? month + "-01";
-    const dataTo = dates[dates.length - 1] ?? month + "-01";
+    // Completeness: check that the statement covers a full ~month
+    const periodDays = daysBetween(row.statement_period_start, row.statement_period_end);
+    const completeness: "complete" | "partial" = periodDays >= 25 ? "complete" : "partial";
+
+    // Statement period is the actual data range
+    const dataFrom = row.statement_period_start;
+    const dataTo = row.statement_period_end;
 
     monthlySummaries.push({
       month,
       label,
-      closingBalance: 0,
+      openingBalance: opening,
+      closingBalance: closing,
       totalIncome: income,
       totalExpenses: expenses,
-      netFlow: income - expenses,
-      transactionCount: txs.length,
+      netFlow,
+      transactionCount: row.transaction_count ?? 0,
       status: monthStatus(income, expenses),
       completeness,
       dataFrom,
