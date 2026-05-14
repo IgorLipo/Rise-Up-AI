@@ -52,6 +52,12 @@ Progress: [██████████] 100%
 *Updated after each plan completion*
 | Phase 03 P02 | 6 minutes | 2 tasks | 6 files |
 
+## Quick Tasks Completed
+
+| Slug | Date | Description |
+|------|------|-------------|
+| fix-forecast-engine-exclude-one-offs-fro | 2026-05-14 | Fix forecast engine to exclude one-offs, show monthly average as overlay |
+
 ## Accumulated Context
 
 ### Decisions
