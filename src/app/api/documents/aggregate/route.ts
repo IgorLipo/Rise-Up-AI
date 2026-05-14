@@ -504,11 +504,11 @@ async function computeAggregate(
     : null;
   let forecastError: string | null = null;
 
-  if (forecast) {
-    const validation = validateDailyForecast(forecast.dailyForecast, forecast.currentBalance);
+  if (forecast && currentPosition.balance != null) {
+    const validation = validateDailyForecast(forecast, currentPosition.balance);
     if (!validation.valid) {
-      console.error("Forecast validation failed:", validation.errors);
-      forecastError = validation.errors.join("; ");
+      console.error("[aggregate] Forecast validation failed:", validation.errors);
+      forecastError = `Forecast math error: ${validation.errors.length} check(s) failed.`;
       forecast = null;
     }
   }

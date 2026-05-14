@@ -6,6 +6,7 @@ interface HistoryTabProps {
   monthly: Array<{
     month: string;
     label: string;
+    openingBalance?: number;
     totalIncome: number;
     totalExpenses: number;
     netFlow: number;

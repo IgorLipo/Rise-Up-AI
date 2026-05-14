@@ -149,6 +149,22 @@ export function DailyForecastChart({ data }: Props) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#f59e0b] inline-block" /> Risk</span>
       </div>
 
+      {/* Risk summary */}
+      {data.filter(d => d.riskFlag).length > 0 && (
+        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span className="text-xs font-medium text-amber-800">
+              {data.filter(d => d.riskFlag).length} day{data.filter(d => d.riskFlag).length !== 1 ? 's' : ''} with low balance risk
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-amber-700">
+            Lowest balance: {formatCurrency(Math.min(...data.map(d => d.closingBalance)))} on{' '}
+            {new Date(data.reduce((worst, d) => d.closingBalance < worst.closingBalance ? d : worst).date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+          </div>
+        </div>
+      )}
+
       {/* Grouped daily breakdown */}
       {data.length > 0 && (
         <div className="mt-4 space-y-3">
