@@ -127,10 +127,8 @@ export function generateDailyForecast(
     const highExpenses = dayTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
     const medIncome = possibleTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
     const medExpenses = possibleTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
-    const income = highIncome + medIncome;
-    const expenses = highExpenses + medExpenses;
     const opening = balance;
-    const closing = opening + income - expenses;
+    const closing = opening + highIncome - highExpenses;
 
     const riskFlag = closing < totalExpectedExpenses * 0.2;
     const riskMessage = riskFlag
@@ -142,8 +140,8 @@ export function generateDailyForecast(
     days.push({
       date: dateStr,
       openingBalance: opening,
-      expectedIncome: income,
-      expectedExpenses: expenses,
+      expectedIncome: highIncome,
+      expectedExpenses: highExpenses,
       mediumConfidenceIncome: medIncome,
       mediumConfidenceExpenses: medExpenses,
       closingBalance: closing,

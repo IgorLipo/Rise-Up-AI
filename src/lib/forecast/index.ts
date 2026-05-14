@@ -18,8 +18,7 @@ export interface CalculationAudit {
   highConfidenceExpenses: number;
   mediumConfidenceIncome: number;
   mediumConfidenceExpenses: number;
-  predictedRangeLow: number;
-  predictedRangeHigh: number;
+  predictedBalance: number;
 }
 
 export interface MonthEndForecast {
@@ -356,8 +355,7 @@ export function generateForecast(
       highConfidenceExpenses: remainingExpenses,
       mediumConfidenceIncome: mediumIncomeTotal,
       mediumConfidenceExpenses: mediumExpensesTotal,
-      predictedRangeLow: currentBalance + remainingIncome - remainingExpenses,
-      predictedRangeHigh: currentBalance + remainingIncome + mediumIncomeTotal - remainingExpenses - mediumExpensesTotal,
+      predictedBalance: currentBalance + remainingIncome - remainingExpenses,
     },
     catchUpEstimate: null, // populated by the aggregate route, not here
   };

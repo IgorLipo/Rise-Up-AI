@@ -114,7 +114,7 @@ export function ForecastTab(props: ForecastTabProps) {
         </div>
       )}
 
-      {/* Forecast Calculation Audit Trail (criterion 1.3) */}
+      {/* Forecast Calculation Audit Trail */}
       {forecast?.calculationAudit && (
         <div className="bg-white border border-zinc-200 rounded-xl p-4">
           <div className="text-xs text-zinc-400 uppercase tracking-wider font-medium mb-3">
@@ -128,37 +128,34 @@ export function ForecastTab(props: ForecastTabProps) {
               </span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">+ Expected income (HIGH)</span>
+              <span className="text-zinc-500">+ Expected recurring income</span>
               <span className="font-mono text-emerald-600 tabular-nums">
                 {formatCurrency(forecast.calculationAudit.highConfidenceIncome)}
               </span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">&minus; Expected expenses (HIGH)</span>
+              <span className="text-zinc-500">&minus; Expected recurring expenses</span>
               <span className="font-mono text-red-500 tabular-nums">
                 {formatCurrency(forecast.calculationAudit.highConfidenceExpenses)}
               </span>
             </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">&plusmn; Expected income (MEDIUM)</span>
-              <span className="font-mono text-emerald-500 tabular-nums">
-                {formatCurrency(forecast.calculationAudit.mediumConfidenceIncome)}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">&plusmn; Expected expenses (MEDIUM)</span>
-              <span className="font-mono text-red-400 tabular-nums">
-                {formatCurrency(forecast.calculationAudit.mediumConfidenceExpenses)}
-              </span>
-            </div>
-            <div className="border-t border-zinc-100 pt-2 mt-1 flex justify-between text-xs">
-              <span className="text-zinc-500 font-medium">= Predicted balance</span>
-              <span className="font-mono text-zinc-900 font-semibold tabular-nums">
-                ~{formatCurrency(forecast.calculationAudit.predictedRangeLow)}&ndash;
-                {formatCurrency(forecast.calculationAudit.predictedRangeHigh)}
+            <div className="border-t border-zinc-100 pt-2 mt-1 flex justify-between text-sm">
+              <span className="text-zinc-700 font-semibold">Predicted month-end balance</span>
+              <span className={`font-mono font-bold tabular-nums ${
+                forecast.calculationAudit.predictedBalance >= 0 ? "text-emerald-600" : "text-red-500"
+              }`}>
+                {formatCurrency(forecast.calculationAudit.predictedBalance)}
               </span>
             </div>
           </div>
+          {(forecast.calculationAudit.mediumConfidenceIncome > 0 || forecast.calculationAudit.mediumConfidenceExpenses > 0) && (
+            <div className="mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-400">
+              You may also have up to {formatCurrency(forecast.calculationAudit.mediumConfidenceIncome)} in additional
+              income and {formatCurrency(forecast.calculationAudit.mediumConfidenceExpenses)} in additional
+              expenses from less consistent patterns — these are shown in the daily forecast
+              but not counted toward the predicted balance.
+            </div>
+          )}
         </div>
       )}
 
