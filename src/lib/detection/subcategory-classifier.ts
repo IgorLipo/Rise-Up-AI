@@ -56,6 +56,26 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bthe\s*barn\s*burger\b/i, /\bthe\s*barn\s*burge\b/i,
     /\btoddington\s*north\s*pret\b/i,
     /\bcoyote\s*ugly\b/i,
+    // Extended restaurant / cafe list (from invoice deep-dive)
+    /\bcattle\s*and\s*smoke\b/i, /\bribeye\s*steakhouse\b/i,
+    /\brio'?s\s*piri\s*piri\b/i, /\bohannes\s*burger\b/i,
+    /\bnoodle\s*house\b/i, /\bthe\s*mayan\b/i, /\bzizzi\b/i,
+    /\bjoeandthejuice\b/i, /\btamatanga\b/i, /\bpeara\b/i,
+    /\bafrikana\b/i, /\blokma\s*shawarma\b/i,
+    /\bls\s*secret\s*garden\b/i, /\bangus\s*&\s*wagyu\b/i,
+    /\bsoho\s*coffee\b/i, /\bsmokyz\b/i, /\bbatch'?d\b/i,
+    /\bthe\s*farmhouse\b/i, /\bthe\s*broadway\s*bar\b/i,
+    /\bnicco\s*bar\b/i, /\brailway\s*hinckley\b/i,
+    /\bpak\s*foods\b/i, /\bone\s*stop\b/i, /\bamigo\s*leicester\b/i,
+    /\bmorr\s*(?:tamworth|leicester)\b/i, /\bmorrisons\b/i,
+    /\bmeet\s*bros\b/i, /\bharrys\s*kings?\s*cross\b/i,
+    /\bresta\s*coffee\b/i, /\btea\s*time\s*leicester\b/i,
+    /\bthe\s*effervesce\b/i, /\bsumup\s*\*the\s*effervesce\b/i,
+    /\bgk\s*leicester\b/i, /\bafrican\s*heritage\b/i,
+    /\bpremier\s*post\s*office\b/i,           // small retail / convenience
+    /\bcompare\s*the\s*market\b/i,
+    /\bco\s*op\s*live\b/i,
+    /\bexpo\s*city\s*croydon\b/i,
     // London/broader
     /\bgiggling\s*squid\b/i, /\bthai\s*express\b/i, /\bnovikov\b/i,
     /\bsushisamba\b/i, /\bkabul\s*darbar\b/i, /\bhide\s*restaurant\b/i,
@@ -93,6 +113,8 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bwhop\b/i, /\bexposcale\b/i, /\btoolsuite\b/i,
     /\bgodaddy\b/i, /\b01\.ai\b/i, /\bppt\.ai\b/i,
     /\bwww\.capital\s*ontap\b/i,
+    /\baccess\s*uk\s*ltd\b/i, /\bcom678\b/i,    // Access UK ERP suite
+    /\bwww\.use\.ai\b/i,
     /\b(?:website|web\s*host|domain|hosting)\b/i,
     /\b(?:software|saas)\b/i,
   ],
@@ -105,6 +127,11 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\byoutube\s*(premium|music)\b/i,
     /\bgoogle\s*one\b/i,
     /\bpreschool\b/i, /\bbemorefit\b/i,
+    /\bsam\s*preston\b/i,                  // health & fitness / team events
+    /\bcarisbrooke\s*ltc\b/i,              // tennis club
+    /\bevolution\s*fitness\b/i,
+    /\bufs\s*\*evolution/i,
+    /\bwww\.e\.org\b/i,                    // Energy UK membership
   ],
   "car-expenses": [
     // Car brands
@@ -130,6 +157,20 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bsq\s*\*f1pro\b/i,    // backstop in case the SQ prefix wasn't stripped
     // Vehicle tests / authorities
     /\bdvsa\s*theory/i, /\bdvsa\b/i,
+    // Vehicle insurance / lease
+    /\blvic\b/i,
+    // Tolls / parking
+    /\bmersey\s*tunnel\b/i,
+    /\bsimple\s*intelligent\s*par/i,
+    /\bplaces\s*for\s*london\b/i,         // PfL parking / TfL fares
+    // Petrol stations spelled out
+    /\bsf\s*connect\b/i,                  // service-station SF Connect chain
+    /\bservice\s*statio?\b/i,             // generic SERVICE STATIO
+    /\bs\/stn\b/i,                        // S/STN abbreviation
+    /\bhowkins\s*service/i,
+    /\bnewport\s*pagnell\s*n-?\s*sta/i,
+    /\bst\s*peters\s*road\s*service/i,
+    /\bonstr\s*\(?e\)?\s*basingstoke/i,   // Milton Keynes onstreet
     // Parking
     /\bpaybyphone\b/i, /\bringgo\b/i,
     /\bncp\b/i, /\bq-park\b/i, /\bq\s*park\b/i,
@@ -180,6 +221,12 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bosiris\b/i,
     /\bsandhar\s*investment\b/i,
     /\bops\s*rent\b/i,
+    /\bonline\s*estat\b/i,                  // Online Estate Ltd
+    /\bmidshire\s*propertie?\b/i,
+    /\brydell\s*ltd\b/i,
+    /\bwayoflife\.com\b/i,
+    /\bk\s*p\s*shahbaz\b/i,                 // Property fee collector
+    /\bpmg\b/i,                             // Property Management Group
   ],
   rent: [
     /\brent\b|lease payment|property rent|office rent|commercial rent|letting|landlord|housing benefit|accommoda|green acres|estate\b/i,
@@ -222,23 +269,47 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bico\.org\b/i,
     /\bkeyivr\b/i, /\bbarnet\.keyivr/i,    // Council IVR payment portal
     /\blcc\s*npu\b/i, /\bwww\.paynotice\b/i,
+    /\bhinckley\s*&?\s*boswor/i,           // Hinckley & Bosworth Borough Council
+    /\bstaffor[a-z]*\.gov\.uk\b/i,         // Stafford BC parking / fees
+    /\bnest\s*it\d+/i,                     // NEST workplace pension
+    /\bnest\b.*\bpension\b/i,
+    /\bpensions?\s*regul/i,                // The Pensions Regulator (already partial)
+    /\bworkplace\s*pension\b/i,
   ],
   "director-loans": [
     /director.?loan|dla|dlj/i,
-    /\brefun\s*dir\s*loan\b/i,
-    /\bdirectors?\s*(?:loan|repayment|payment|refund)\b/i,
+    /\brefun.?d?\s*dir/i,                  // RefunDirLoan, RefudDirLoan, RefunDireLoan
+    /\bdire?\s*loan/i,                     // DireLoan variants
+    /\bdirectors?\s*(?:loan|repayment|payment|refund|renumeration|remuneration)\b/i,
+    /\bd\s*re[nm]umer/i,                   // "D RENUMERATION" / "D REMUNERATION"
     /\bdl\s*(?:account|loan)\b/i,
     /\bdirector\s*refund\b/i,
+    // Named operators recurring as director / partner cash flows.
+    // (Conservative — only when accompanied by typical director-loan tokens.)
+    /\bophir\s*lahav\b/i,
+    /\bol\s*management\b.*\b(?:loan|refun|dire)/i,
+    /\bhamza\s*ahmed\b.*\b(?:revolut|d\s*re[nm]umer|withdrawl|repayment|sent\s*from)/i,
+    /\bag\s*ophir\s*lahav\b/i,
   ],
   loans: [
     /loan repayment|bank loan|business loan|bounce back loan|cbils|capify|\bloan\b|funding circle|iwoca|capital on tap|\bfinance\s*(?:company|plc|ltd|house|group|solution)\b/i,
     /\bcapital\s*on\s*tap\b/i,
     /\b(?:loan|credit|finance)\s*(?:repayment|payment|agreement)\b/i,
+    /\bpropel\s*finance\b/i,
+    // Royal Bank / RBS recurring outflows look like loan / CC payments
+    /\broyal\s*bank\b\s*\d{1,2}[a-z]{3}\b/i,
+    // Internal credit-card statement clearance: "30MAY A/C 37523686"
+    /\b\d{1,2}[a-z]{3}\s+a\/c\s*\d{4,}\b/i,
   ],
   "supplier-payments": [
     /\b(?:supplier|wholesale|distributor|inventory|stock\s*purchase)\b/i,
     /\binv\b/i, /\binvoice\b/i,
     /\b(?:purchase|supply|procurement)\s*(?:order|invoice|payment)\b/i,
+    /\bikstar\b/i,                         // Major materials supplier
+    /\bclh\s*group\b/i,                    // Industrial tools / kit
+    /\biks?tar\s*limited\b/i,
+    /\bsi-\s?\d{3,}\b/i,                   // "SI-30033" supply-invoice prefix
+    /\bpo-?\s?\d{3,}\b/i,                  // "PO-004" purchase-order prefix
   ],
   utilities: [
     // Energy companies
@@ -255,6 +326,12 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
   "bank-fees": [
     /overdraft fee|account fee|service charge|bank charge|transaction fee|monthly fee|unpaid item|arranged overdraft/i,
     /\bbank\s*(?:fee|charge|payment)\b/i,
+    /\bacc-nwestplat\b/i,                  // NatWest Platinum platform fee
+    /\bfp\s*reject\b/i,                    // Failed Faster Payment
+    /\bbmach\b/i,                          // Barclays ATM (cash withdrawal)
+    /\bnotemachine\b/i,                    // Third-party ATM
+    /\bpost\s*office\s*\d{1,2}[a-z]{3}\b/i, // Post Office counter cash
+    /\broyal\s*bank\s+\d{1,2}[a-z]{3}\b/i, // RBS routine sweep (also matched in loans; first-match wins)
   ],
   insurance: [
     /\binsurance\b/i,
@@ -267,6 +344,9 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bace\s*marketing\b/i,
     /\bsocial\s*media\b/i,
     /\b(?:seo|ppc|sem)\b/i,
+    /\bminuteman\s*press\b/i,                 // Flyers / posters
+    /\baa\s*print\b/i,                        // Print supplier
+    /\b(?:flyers?|leaflets?|posters?|signage|brochures?)\b/i,
   ],
   travel: [
     // Flights
@@ -304,6 +384,9 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     // Airports
     /\bstansted\s*airport\b/i,
     /\bluton\s*(?:exp|airport)\b/i,
+    // Couriers / parcel shipping
+    /\bfedex\b/i, /\bdpd\b/i, /\bparcelforce\b/i,
+    /\bhlt[_\s]*lon[_\s]*metropole\b/i,        // Hilton London Metropole
   ],
   "office-supplies": [
     /stationery|office supplies|printer|ink |toner|viking direct|staples|ryman|banner|vistaprint|printed\.com/i,
@@ -314,9 +397,41 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\b(?:legal|law)\s*(?:firm|practice|services?|advice)\b/i,
     /\b(?:removal|clearance|waste|rubbish|recycling)\s*(?:service|company|firm)?\b/i,
     /\b(?:gardening|landscaping|tree\s*surgery)\b/i,
-    /\bic-cleaners\b/i,
+    /\bic-cleaners\b/i, /\bhome\s*care\s*leiceste/i,
     /\b(?:painting|decorating|plastering|carpentry|joinery)\b/i,
     /\bucheck\b/i,
+    // Property-tradespeople / contractors (recurring small invoices from
+    // named individuals tied to property refurb).
+    /\bkane\s*jones\b/i,
+    /\bdavinder\s*singh\b/i,
+    /\bm\s*rayyan\s*sheikh\b/i, /\brayyan\s*sheikh\b/i,
+    /\bdarius?z?\s*browarek\b/i,
+    /\bwahiduz\s*zaman\b/i, /\bshafikuz\s*zaman\b/i,
+    /\bi\s*szachidewicz\b/i,
+    /\ba[\s.]?g[\s.]?a[hj]med\b/i,            // "A G AHMED" / "A G AJMED"
+    /\bsatinder\s*singh\b/i,
+    /\bg\s*moa?hmmed\s*haydar\b/i,           // electrician
+    /\bmy\s*projectz\b/i,
+    /\bfaizan\s*shafiq\b/i,
+    /\bbrenda\s*fuller\b/i,
+    /\bkenneth\s*obilaso\b/i,                 // removals / site clearance
+    /\baltaf\s*daud\b/i,
+    /\bd&s\s*drainage\b/i,
+    /\bjs\s*job\s*sorted\b/i,                 // recruitment
+    /\bs\s*and\s*a\s*autos\b/i,               // mechanic — fits car-expenses but routed here
+    /\baa\s*print\b/i, /\bminuteman\s*press\b/i,  // print / marketing
+    /\bdariusz\s*browarek\b/i,
+    /\bp\s*zimecki\b/i,                       // builder
+    /\bsleep\s*assured\b/i,
+    /\bjorge\s*lopes\b/i, /\baccess\s*uk\b.*\binitial\s*payment\b/i,
+    /\bshona\s*fabulous\s*fac\b/i,            // events / face painting
+    /\bst\s*francis\s*communi/i,              // room hire
+    /\bking\s*inflatables\b/i,
+    /\bjulia\s*boguslawska\b/i,               // staff reimbursement
+    /\bfahad\s*ahmed\s*reimburs/i,
+    /\b(?:initial\s*payment|inv\s*no|invoice\s*no)\b/i,
+    /\breimburs?ment\b/i,
+    /\bcarpentry\b|\bjoinery\b|\bbuilder\b|\bcontractor\b/i,
   ],
   supplies: [
     // Supermarkets / convenience stores
@@ -364,13 +479,21 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
   "uncategorized": [/./],
 };
 
-export function classifySubcategory(description: string): ClassificationResult {
-  // Test BOTH the raw description and the normalized form. Some patterns
-  // (e.g. \bsubway\b) only match after normalization strips suffix digits
-  // ("SUBWAY25594" → "SUBWAY"); other patterns rely on raw artefacts like
-  // "VIA MOBILE - PYMT" being present.
+/**
+ * Classify a transaction description.
+ *
+ * Hard rule: never returns "uncategorized" to callers. If no keyword pattern
+ * matches, falls back to a direction-aware best-guess essence category
+ * (the caller passes `direction` so we can route credits → property-income
+ * and debits → supplier-payments). The original "uncategorized" subcategory
+ * is no longer surfaced anywhere — it's an internal-only state inside
+ * matching loops.
+ */
+export function classifySubcategory(
+  description: string,
+  direction?: "credit" | "debit"
+): ClassificationResult {
   const raw = description;
-  // Lazy-import to avoid circular dep (normalizer doesn't import this file).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { normalizeMerchant } = require("./merchant-normalizer") as typeof import("./merchant-normalizer");
   const normalized = normalizeMerchant(description);
@@ -387,7 +510,15 @@ export function classifySubcategory(description: string): ClassificationResult {
       }
     }
   }
-  return { category: "Uncategorized", subcategory: "uncategorized", confidence: 0.1 };
+
+  // Fallback: route by direction. We never expose "uncategorized" to callers.
+  // The "one-off" flag is tracked separately (cross-month learner sets it
+  // when a vendor has only ever appeared once) — the subcategory still
+  // reflects the essence of the transaction.
+  if (direction === "credit") {
+    return { category: "Other Income", subcategory: "property-income", confidence: 0.3 };
+  }
+  return { category: "Suppliers & Services", subcategory: "supplier-payments", confidence: 0.3 };
 }
 
 function mapToCategory(sub: Subcategory): string {

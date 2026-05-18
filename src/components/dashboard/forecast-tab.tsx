@@ -1,7 +1,6 @@
 "use client";
 
 import type { MonthEndForecast } from "@/lib/forecast";
-import { AccumulatedStats } from "@/components/dashboard/accumulated-stats";
 import { DailyForecastChart } from "@/components/charts/daily-forecast-chart";
 import { formatCurrency } from "@/lib/utils";
 
@@ -72,25 +71,35 @@ interface ForecastTabProps {
 }
 
 export function ForecastTab(props: ForecastTabProps) {
-  const {
-    currentPosition, forecast, accumulated, categories, patterns,
-    totalDocuments, totalTransactions, statementInfo, balanceValidation,
-    historicalForecast,
-    monthlyOneOffExpenseAvg, monthlyOneOffIncomeAvg, oneOffHistoryMonths,
-  } = props;
+  const { forecast, statementInfo, historicalForecast } = props;
+
+  // Derive whole-month actuals + projection from the daily forecast (which
+  // now spans 1st → last of the current calendar month, with actuals for
+  // past days and recurring projections for future days).
+  const today = new Date().toISOString().split("T")[0];
+  const daily = forecast?.dailyForecast ?? [];
+  const pastDays = daily.filter((d) => d.date < today);
+  const futureDays = daily.filter((d) => d.date >= today);
+  const incomeSoFar = pastDays.reduce((s, d) => s + d.expectedIncome, 0);
+  const expensesSoFar = pastDays.reduce((s, d) => s + d.expectedExpenses, 0);
+  const incomeProjected = futureDays.reduce((s, d) => s + d.expectedIncome, 0);
+  const expensesProjected = futureDays.reduce((s, d) => s + d.expectedExpenses, 0);
+  const totalMonthIncome = incomeSoFar + incomeProjected;
+  const totalMonthExpenses = expensesSoFar + expensesProjected;
+  const monthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
   return (
     <div className="space-y-5">
-      {/* Headline credibility card — trailing-N-month historical baseline */}
-      {historicalForecast && currentPosition.balance != null && (
+      {/* Whole-month forecast headline — actuals so far + projected to end. */}
+      {historicalForecast && (
         <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 rounded-xl p-5">
           <div className="flex items-start justify-between mb-3">
             <div>
               <div className="text-[10px] text-indigo-600 uppercase tracking-wider font-semibold">
-                Where you&apos;ll likely end the month
+                {monthLabel} — projected month-end
               </div>
               <div className="text-xs text-zinc-500 mt-0.5">
-                {historicalForecast.method} · {historicalForecast.daysRemaining} day{historicalForecast.daysRemaining !== 1 ? "s" : ""} remaining in current month
+                {historicalForecast.method} · projecting through {historicalForecast.monthEndDate}
               </div>
             </div>
             <div className="text-right">
@@ -101,83 +110,55 @@ export function ForecastTab(props: ForecastTabProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div>
-              <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Current balance</div>
-              <div className="text-xl font-bold text-zinc-900 tabular-nums">
-                {formatCurrency(currentPosition.balance)}
-              </div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
-                as of {historicalForecast.asOfDate}
-              </div>
+          <div className="text-3xl font-bold tabular-nums text-indigo-700 mb-3">
+            {formatCurrency(historicalForecast.predictedMonthEnd)}
+          </div>
+
+          <div className="border-t border-indigo-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Income so far</span>
+              <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(incomeSoFar)}</span>
             </div>
-            <div>
-              <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Expected net flow</div>
-              <div className={`text-xl font-bold tabular-nums ${
-                historicalForecast.expectedNetFlow >= 0 ? "text-emerald-600" : "text-red-500"
-              }`}>
-                {historicalForecast.expectedNetFlow >= 0 ? "+" : ""}
-                {formatCurrency(historicalForecast.expectedNetFlow)}
-              </div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
-                between now and month-end
-              </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Expenses so far</span>
+              <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(expensesSoFar)}</span>
             </div>
-            <div>
-              <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Projected month-end</div>
-              <div className={`text-xl font-bold tabular-nums ${
-                historicalForecast.predictedMonthEnd >= 0 ? "text-indigo-700" : "text-red-600"
-              }`}>
-                {formatCurrency(historicalForecast.predictedMonthEnd)}
-              </div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
-                by {historicalForecast.monthEndDate}
-              </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Income expected</span>
+              <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(incomeProjected)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Expenses expected</span>
+              <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(expensesProjected)}</span>
+            </div>
+            <div className="flex justify-between font-semibold pt-1 border-t border-indigo-100 col-span-2 mt-1">
+              <span className="text-zinc-700">Month total</span>
+              <span className="font-mono tabular-nums">
+                <span className="text-emerald-700">+{formatCurrency(totalMonthIncome)}</span>
+                {" "}
+                <span className="text-red-600">-{formatCurrency(totalMonthExpenses)}</span>
+                {" = "}
+                <span className={totalMonthIncome - totalMonthExpenses >= 0 ? "text-emerald-700" : "text-red-600"}>
+                  {totalMonthIncome - totalMonthExpenses >= 0 ? "+" : ""}
+                  {formatCurrency(totalMonthIncome - totalMonthExpenses)}
+                </span>
+              </span>
             </div>
           </div>
 
-          <div className="border-t border-indigo-100 pt-3 text-xs text-zinc-600 space-y-1">
-            <div className="font-medium text-zinc-700">Based on the last {historicalForecast.monthsUsed} complete months:</div>
-            <div className="flex justify-between">
-              <span>Avg monthly income</span>
-              <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(historicalForecast.avgMonthlyIncome)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Avg monthly expenses</span>
-              <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(historicalForecast.avgMonthlyExpenses)}</span>
-            </div>
-            <div className="flex justify-between font-semibold">
-              <span>Avg monthly net</span>
-              <span className={`font-mono tabular-nums ${historicalForecast.avgMonthlyNet >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-                {historicalForecast.avgMonthlyNet >= 0 ? "+" : ""}{formatCurrency(historicalForecast.avgMonthlyNet)}
-              </span>
-            </div>
+          <div className="mt-3 pt-3 border-t border-indigo-100 text-xs text-zinc-500">
+            Based on {historicalForecast.monthsUsed} complete months of history:
+            avg income +{formatCurrency(historicalForecast.avgMonthlyIncome)}/mo,
+            expenses -{formatCurrency(historicalForecast.avgMonthlyExpenses)}/mo,
+            net{" "}
+            <span className={historicalForecast.avgMonthlyNet >= 0 ? "text-emerald-700" : "text-red-600"}>
+              {historicalForecast.avgMonthlyNet >= 0 ? "+" : ""}{formatCurrency(historicalForecast.avgMonthlyNet)}/mo
+            </span>.
           </div>
         </div>
       )}
 
-      <AccumulatedStats
-        currentBalance={currentPosition.balance ?? 0}
-        predictedMonthEnd={forecast?.predictedMonthEnd ?? 0}
-        remainingIncome={forecast?.remainingIncome ?? 0}
-        remainingExpenses={forecast?.remainingExpenses ?? 0}
-        status={forecast?.status ?? "safe"}
-        confidence={forecast?.confidence ?? 0}
-        netFlow={accumulated.netFlow}
-        totalDocuments={totalDocuments}
-        totalTransactions={totalTransactions}
-        balanceIsEstimated={currentPosition.isEstimated}
-        balanceCatchUpDays={0}
-        statementClosingBalance={currentPosition.balance ?? undefined}
-        dateFilterActive={false}
-        balanceSource={currentPosition.source}
-        isStale={currentPosition.isStale}
-        statementPeriodEnd={currentPosition.statementPeriodEnd ?? undefined}
-        statementInfo={statementInfo}
-        balanceValidation={balanceValidation}
-      />
-
-      {/* Statement Source-of-Truth Block (criterion 1.1) */}
+      {/* Statement Source-of-Truth Block — anchored facts, kept */}
       {statementInfo && statementInfo.closingBalance != null && (
         <div className="bg-white border border-zinc-200 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -206,108 +187,6 @@ export function ForecastTab(props: ForecastTabProps) {
         </div>
       )}
 
-      {/* Forecast Calculation Audit Trail */}
-      {forecast?.calculationAudit && (
-        <div className="bg-white border border-zinc-200 rounded-xl p-4">
-          <div className="text-xs text-zinc-400 uppercase tracking-wider font-medium mb-3">
-            How this was calculated
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Latest statement balance</span>
-              <span className="font-mono text-zinc-900 tabular-nums">
-                {formatCurrency(forecast.calculationAudit.latestStatementBalance)}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">+ Expected recurring income</span>
-              <span className="font-mono text-emerald-600 tabular-nums">
-                {formatCurrency(forecast.calculationAudit.highConfidenceIncome)}
-              </span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">&minus; Expected recurring expenses</span>
-              <span className="font-mono text-red-500 tabular-nums">
-                {formatCurrency(forecast.calculationAudit.highConfidenceExpenses)}
-              </span>
-            </div>
-            <div className="border-t border-zinc-100 pt-2 mt-1 flex justify-between text-sm">
-              <span className="text-zinc-700 font-semibold">Recurring-only projected balance</span>
-              <span className={`font-mono font-bold tabular-nums ${
-                forecast.calculationAudit.predictedBalance >= 0 ? "text-emerald-600" : "text-red-500"
-              }`}>
-                {formatCurrency(forecast.calculationAudit.predictedBalance)}
-              </span>
-            </div>
-          </div>
-          {(forecast.calculationAudit.mediumConfidenceIncome > 0 || forecast.calculationAudit.mediumConfidenceExpenses > 0) && (
-            <div className="mt-3 pt-3 border-t border-zinc-100 text-xs text-zinc-400">
-              You may also have up to {formatCurrency(forecast.calculationAudit.mediumConfidenceIncome)} in additional
-              income and {formatCurrency(forecast.calculationAudit.mediumConfidenceExpenses)} in additional
-              expenses from less consistent patterns — these are shown in the daily forecast
-              but not counted toward the predicted balance.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Monthly one-off buffer */}
-      {monthlyOneOffExpenseAvg !== undefined && monthlyOneOffExpenseAvg > 0 && oneOffHistoryMonths !== undefined && oneOffHistoryMonths > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div className="text-xs text-blue-500 uppercase tracking-wider font-medium mb-2">
-            Monthly one-off buffer
-          </div>
-          <div className="text-sm text-blue-800 mb-2">
-            Based on {oneOffHistoryMonths} month{oneOffHistoryMonths !== 1 ? "s" : ""} of history, you typically have{" "}
-            <span className="font-semibold">{formatCurrency(monthlyOneOffExpenseAvg)}</span> in one-off
-            expenses each month that aren&apos;t included in the daily forecast.
-          </div>
-          {monthlyOneOffIncomeAvg !== undefined && monthlyOneOffIncomeAvg > 0 && (
-            <div className="text-xs text-blue-600">
-              One-off income averages {formatCurrency(monthlyOneOffIncomeAvg)}/month.
-            </div>
-          )}
-          <div className="text-xs text-blue-400 mt-2 italic">
-            These are real expenses from your history that don&apos;t repeat — keep them in mind
-            when planning your cashflow.
-          </div>
-        </div>
-      )}
-
-      {/* Catch-Up Estimate (criterion 1.6) */}
-      {forecast?.catchUpEstimate && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="text-sm font-semibold text-amber-800 mb-2">
-            {forecast.catchUpEstimate.daysSinceStatement} days since statement
-          </div>
-          <div className="text-xs text-amber-700 mb-2">Based on detected patterns:</div>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-amber-600">~{formatCurrency(forecast.catchUpEstimate.likelySpent)} likely already spent</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-amber-600">~{formatCurrency(forecast.catchUpEstimate.likelyReceived)} likely received</span>
-            </div>
-            <div className="flex justify-between font-medium">
-              <span className="text-amber-800">Estimated current balance</span>
-              <span className="text-amber-900 font-mono">
-                ~{formatCurrency(forecast.catchUpEstimate.estimatedBalance)}
-              </span>
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-[10px] text-amber-600 mb-1">
-              Confidence: {Math.round(forecast.catchUpEstimate.confidence * 100)}%
-            </div>
-            <div className="h-1.5 bg-amber-200 rounded-full">
-              <div
-                style={{ width: `${forecast.catchUpEstimate.confidence * 100}%` }}
-                className="h-full bg-amber-500 rounded-full"
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Low-Confidence Forecast Notice (criterion 1.7) */}
       {forecast?.forecastMode?.isLowConfidence === true && (
