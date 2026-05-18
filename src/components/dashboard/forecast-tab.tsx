@@ -50,6 +50,22 @@ interface ForecastTabProps {
     differencePence: number;
     message: string;
   } | null;
+  historicalForecast?: {
+    predictedMonthEnd: number;
+    expectedIncome: number;
+    expectedExpenses: number;
+    expectedNetFlow: number;
+    daysRemaining: number;
+    daysInMonth: number;
+    monthsUsed: number;
+    avgMonthlyIncome: number;
+    avgMonthlyExpenses: number;
+    avgMonthlyNet: number;
+    confidence: number;
+    method: string;
+    asOfDate: string;
+    monthEndDate: string;
+  } | null;
   monthlyOneOffExpenseAvg?: number;
   monthlyOneOffIncomeAvg?: number;
   oneOffHistoryMonths?: number;
@@ -59,11 +75,87 @@ export function ForecastTab(props: ForecastTabProps) {
   const {
     currentPosition, forecast, accumulated, categories, patterns,
     totalDocuments, totalTransactions, statementInfo, balanceValidation,
+    historicalForecast,
     monthlyOneOffExpenseAvg, monthlyOneOffIncomeAvg, oneOffHistoryMonths,
   } = props;
 
   return (
     <div className="space-y-5">
+      {/* Headline credibility card — trailing-N-month historical baseline */}
+      {historicalForecast && currentPosition.balance != null && (
+        <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 rounded-xl p-5">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <div className="text-[10px] text-indigo-600 uppercase tracking-wider font-semibold">
+                Where you&apos;ll likely end the month
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                {historicalForecast.method} · {historicalForecast.daysRemaining} day{historicalForecast.daysRemaining !== 1 ? "s" : ""} remaining in current month
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Confidence</div>
+              <div className="text-sm font-semibold text-indigo-700">
+                {Math.round(historicalForecast.confidence * 100)}%
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div>
+              <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Current balance</div>
+              <div className="text-xl font-bold text-zinc-900 tabular-nums">
+                {formatCurrency(currentPosition.balance)}
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">
+                as of {historicalForecast.asOfDate}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Expected net flow</div>
+              <div className={`text-xl font-bold tabular-nums ${
+                historicalForecast.expectedNetFlow >= 0 ? "text-emerald-600" : "text-red-500"
+              }`}>
+                {historicalForecast.expectedNetFlow >= 0 ? "+" : ""}
+                {formatCurrency(historicalForecast.expectedNetFlow)}
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">
+                between now and month-end
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Projected month-end</div>
+              <div className={`text-xl font-bold tabular-nums ${
+                historicalForecast.predictedMonthEnd >= 0 ? "text-indigo-700" : "text-red-600"
+              }`}>
+                {formatCurrency(historicalForecast.predictedMonthEnd)}
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">
+                by {historicalForecast.monthEndDate}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-indigo-100 pt-3 text-xs text-zinc-600 space-y-1">
+            <div className="font-medium text-zinc-700">Based on the last {historicalForecast.monthsUsed} complete months:</div>
+            <div className="flex justify-between">
+              <span>Avg monthly income</span>
+              <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(historicalForecast.avgMonthlyIncome)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Avg monthly expenses</span>
+              <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(historicalForecast.avgMonthlyExpenses)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Avg monthly net</span>
+              <span className={`font-mono tabular-nums ${historicalForecast.avgMonthlyNet >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                {historicalForecast.avgMonthlyNet >= 0 ? "+" : ""}{formatCurrency(historicalForecast.avgMonthlyNet)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AccumulatedStats
         currentBalance={currentPosition.balance ?? 0}
         predictedMonthEnd={forecast?.predictedMonthEnd ?? 0}

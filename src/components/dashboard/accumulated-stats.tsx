@@ -113,7 +113,7 @@ export function AccumulatedStats({
         </div>
         <div className="bg-white border border-zinc-200 rounded-xl p-4">
           <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 uppercase tracking-wider font-medium mb-1">
-            Month-end forecast
+            Recurring-only projection
             <span className={`inline-block w-2 h-2 rounded-full ${
               status === "safe" ? "bg-emerald-500"
               : status === "watch" ? "bg-amber-500"
@@ -130,7 +130,10 @@ export function AccumulatedStats({
             predictedMonthEnd >= currentBalance ? "text-emerald-600" : "text-red-500"
           }`}>
             {predictedMonthEnd >= currentBalance ? "+" : ""}
-            {formatCurrency(predictedMonthEnd - currentBalance)} projected
+            {formatCurrency(predictedMonthEnd - currentBalance)} from recurring only
+          </div>
+          <div className="text-[10px] text-zinc-400 mt-1">
+            Excludes one-offs — see headline above
           </div>
         </div>
         <div className="bg-white border border-zinc-200 rounded-xl p-4">
