@@ -2,6 +2,9 @@
 // Strips reference numbers, account codes, payment IDs, dates.
 
 const NOISE_PATTERNS = [
+  // Card-number prefix at start (e.g. "9048 31MAY25 CD MERCHANT..." → "MERCHANT...")
+  // Banks prepend last-4-of-card before card transactions on statements.
+  /^\s*\d{4}\s+/g,
   /\bREF:?\s*\S+/gi,
   /\bFP\s+\d{2}\/\d{2}\/\d{2}\s+\d+\s*\w*\b/gi,
   /\b\d{6,}\b/g,                        // Pure digit sequences (reference numbers)
@@ -20,15 +23,33 @@ const NOISE_PATTERNS = [
   /\bOnLine Transaction\b/gi,
   // Bank statement prefixes for card/debit/credit transactions
   /\bCD\s+(?=[A-Z])/gi,                 // "CD MERCHANT" → "MERCHANT"
-  /\b(?:DD|SO|BP|CR)\s+(?=[A-Z])/gi,   // DD=Direct Debit, SO=Standing Order, BP=Bill Payment, CR=Credit
+  // BP intentionally NOT in this list — collides with BP petrol stations.
+  // The handful of legitimate "BP" prefix uses on UK statements are rare enough
+  // to keep them in the merchant string; classifier handles them.
+  /\b(?:DD|SO|CR)\s+(?=[A-Z])/gi,   // DD=Direct Debit, SO=Standing Order, CR=Credit
+  /\b(?:D|C)\s+(?=[A-Z]{3,})/g,        // Single "D" or "C" before a merchant token
+  // Payment-processor wrapper prefixes (the merchant name follows the asterisk)
+  // "SQ *GLISTENINGPRO" → "GLISTENINGPRO"
+  /\bSQ\s*\*/gi,
+  /\bSUMUP[\s_]*\*/gi,
+  /\bZETTLE[\s_]*\*?/gi,
+  /\bIZ\s*\*/gi,
+  /\bWHOP[\s_]*\*/gi,
+  /\bDNH\s*\*/gi,                       // GoDaddy's wholesale prefix "DNH*GODADDY"
+  /\bPP\s*\*/gi,                        // PayPal
+  /\bPAYPAL\s*\*/gi,
+  // Strip trailing currency / FX suffix block (typical foreign-card statement tail)
+  /\b[A-Z]{3}\s+[\d.,]+\s+VRATE\s+[\d.,]+.*$/gi,
+  /\bN-S\s+TRN\s+FEE.*$/gi,
   // Date-like noise at end of descriptions
   /\b\d{2}[A-Z]{3}\d{2}\b/g,           // "03JUL25" date format
   // Invoice/reference codes with delimiters — hyphens prevent digit-sequence patterns from matching
   /\b(?:INV|WC|RFQ|PO|ORD)\s*[-:#]?\s*\d{2,}\b/gi,
   // MONZO invoice references: "MONZO INV-12345" → "MONZO"
   /\bMONZO\s+(?:INV|PAY|PYMT|PMT)\s*[-:#]?\s*\d+\b/gi,
-  // Payment reference codes: "PMT 12345", "PMT-00123"
+  // Payment reference codes: "PMT 12345", "PMT-00123", "PT220686"
   /\bPMT\s*[-:#]?\s*\d+\b/gi,
+  /\bPT\d{4,}\b/g,
   // Policy/agreement numbers: "POLICY 123456"
   /\b(?:POLICY|AGREEMENT|CONTRACT)\s*(?:NO|NUMBER|REF)?\s*[-:#]?\s*\d+\b/gi,
   // Company legal suffixes — strip for canonical name purposes
@@ -37,10 +58,19 @@ const NOISE_PATTERNS = [
   /\bINITIAL\s+PAYMENT\b/gi,
   /\bREGULAR\s+PAYMENT\b/gi,
   /\bMONTHLY\s+PAYMENT\b/gi,
+  // Trailing country/postcode "GB", "UK", "US", etc.
+  /\b(?:GB|UK|US|USA|SG|EU|IE|FR|DE|ES|IT|NL)\b\s*$/g,
 ];
+
+// Patterns that should preserve a capture group (replace with $1 not blank).
+// Run BEFORE the noise loop so the merchant token survives.
+const DIGIT_SUFFIX_PRESERVE = /([A-Za-z]{4,})\d{3,}\b/g;
 
 export function normalizeMerchant(description: string): string {
   let cleaned = description;
+  // Strip trailing digits from merchant tokens but PRESERVE the merchant name.
+  // "SUBWAY25594" → "SUBWAY", "MONZO12345" → "MONZO"
+  cleaned = cleaned.replace(DIGIT_SUFFIX_PRESERVE, "$1");
   for (const pattern of NOISE_PATTERNS) {
     cleaned = cleaned.replace(pattern, " ");
   }
@@ -77,7 +107,11 @@ const ADDRESS_NOISE = new Set([
 // Extract the core merchant name — skip address/unit noise and take meaningful words.
 // Uses up to 4 words (more than before) for longer merchant names.
 export function coreMerchant(description: string): string {
-  const normalized = normalizeMerchant(description);
+  // Collapse short tokens around ampersands into joined form ("B & Q" → "B&Q")
+  // so they survive the single-char skip rule below.
+  let normalized = normalizeMerchant(description);
+  normalized = normalized.replace(/\b([A-Za-z0-9])\s*&\s*([A-Za-z0-9])\b/g, "$1&$2");
+
   const words = normalized.split(/\s+/);
   const core: string[] = [];
 
@@ -85,7 +119,8 @@ export function coreMerchant(description: string): string {
     if (core.length >= 4) break;
     // Skip pure digits
     if (/^\d+$/.test(word)) continue;
-    // Skip single characters
+    // Single characters — keep if it's a letter that pairs with a meaningful next
+    // token (uncommon now that ampersand-joined names are pre-collapsed).
     if (word.length < 2) continue;
     // Skip address/unit noise
     if (ADDRESS_NOISE.has(word.toLowerCase())) continue;

@@ -95,11 +95,20 @@ export async function GET(req: NextRequest) {
 
     if (cached && !cached.needs_recalculation && cached.aggregate_data) {
       const data = cached.aggregate_data as Record<string, unknown>;
-      return NextResponse.json({
-        ...data,
-        _cached: true,
-        _lastCalculatedAt: cached.last_calculated_at,
-      });
+      return NextResponse.json(
+        {
+          ...data,
+          _cached: true,
+          _lastCalculatedAt: cached.last_calculated_at,
+        },
+        {
+          headers: {
+            // Allow shared CDN/browser to serve cached payload up to 30s;
+            // afterwards, serve stale while revalidating in background.
+            "Cache-Control": "private, max-age=30, stale-while-revalidate=300",
+          },
+        }
+      );
     }
   }
 
@@ -133,13 +142,22 @@ async function computeAggregate(
   const dateTo = url.searchParams.get("to");
   const dateFilterActive = !!(dateFrom || dateTo);
 
-  // ── Accurate counts from statement_history (deduplicated) ──
-  const { data: statementHistory } = await supabase
-    .from("statement_history")
-    .select("statement_period_start, statement_period_end, transaction_count, opening_balance, closing_balance, total_income, total_expenses")
-    .eq("company_id", companyId)
-    .eq("parse_status", "ok")
-    .order("uploaded_at", { ascending: false });
+  // ── Parallel fetch: statement_history + documents ──
+  const [statementHistoryRes, docsRes] = await Promise.all([
+    supabase
+      .from("statement_history")
+      .select("statement_period_start, statement_period_end, transaction_count, opening_balance, closing_balance, total_income, total_expenses")
+      .eq("company_id", companyId)
+      .eq("parse_status", "ok")
+      .order("uploaded_at", { ascending: false }),
+    supabase
+      .from("documents")
+      .select("id, filename, uploaded_at, statement_data")
+      .eq("company_id", companyId)
+      .order("uploaded_at", { ascending: true }),
+  ]);
+  const statementHistory = statementHistoryRes.data;
+  const docs = docsRes.data;
 
   const seenPeriods = new Set<string>();
   let accurateStatementCount = 0;
@@ -153,13 +171,6 @@ async function computeAggregate(
       accurateTransactionCount += row.transaction_count ?? 0;
     }
   }
-
-  // Fetch ALL documents for this company
-  const { data: docs } = await supabase
-    .from("documents")
-    .select("id, filename, uploaded_at, statement_data")
-    .eq("company_id", companyId)
-    .order("uploaded_at", { ascending: true });
 
   if (!docs || docs.length === 0) {
     return {
@@ -689,11 +700,14 @@ async function computeAggregate(
     confidence = Math.min(1, confidence);
 
     const intelEntry = existingVendorMap.get(v.canonicalName.toLowerCase());
+    // Cap to most-recent 12 occurrences to keep response payload reasonable.
+    // 600+ vendors × 12 months of history can easily push the JSON past 2 MB
+    // and slow down both the network and React rendering.
     const occurrences = v.dates.map((date, i) => ({
       date,
       amount: v.amounts[i] ?? 0,
       description: v.allDescriptions[i] ?? "",
-    })).sort((a, b) => b.date.localeCompare(a.date));
+    })).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
 
     return {
       canonicalName: v.canonicalName,
