@@ -9,7 +9,6 @@ import { DateRangeSelector, type DateRangePreset } from "@/components/dashboard/
 import { TabNavigation } from "@/components/dashboard/tab-navigation";
 import { ForecastTab } from "@/components/dashboard/forecast-tab";
 import { HistoryTab } from "@/components/dashboard/history-tab";
-import { TransactionsTab } from "@/components/dashboard/transactions-tab";
 
 interface AggregateResponse {
   hasData: boolean;
@@ -323,6 +322,11 @@ function DashboardContent() {
     if (!companyId) return;
     setRecalculating(true);
     try {
+      // 1. Re-classify every stored transaction with the latest classifier
+      //    (writes subcategory back into documents.statement_data).
+      // 2. Invalidate aggregate cache.
+      // 3. Fetch fresh aggregate.
+      await fetch("/api/documents/reclassify", { method: "POST" });
       await fetch(`/api/documents/recalculate?companyId=${companyId}`, { method: "POST" });
       const r = await fetch(`/api/documents/aggregate?recalculate=true`);
       if (r.ok) {
@@ -334,10 +338,11 @@ function DashboardContent() {
     }
   };
 
+  // Tabs: Forecast + History. Transactions has its own dedicated page at
+  // /transactions — having it as a tab here too was a duplicate UI surface.
   const TABS = [
     { id: "forecast", label: "Current Forecast" },
     { id: "history", label: "Monthly History" },
-    { id: "transactions", label: "Transactions" },
   ];
 
   return (
@@ -421,16 +426,6 @@ function DashboardContent() {
             categories={data.categories}
             suspicious={data.suspicious}
             onViewTransactions={(month) => router.push(`/transactions?month=${month}`)}
-          />
-        </div>
-      )}
-
-      {activeTab === "transactions" && (
-        <div className="mt-5">
-          <TransactionsTab
-            categories={data.categories}
-            monthly={data.monthly}
-            totalTransactions={data.totalTransactions}
           />
         </div>
       )}

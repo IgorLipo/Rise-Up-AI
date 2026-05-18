@@ -365,12 +365,25 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
 };
 
 export function classifySubcategory(description: string): ClassificationResult {
+  // Test BOTH the raw description and the normalized form. Some patterns
+  // (e.g. \bsubway\b) only match after normalization strips suffix digits
+  // ("SUBWAY25594" → "SUBWAY"); other patterns rely on raw artefacts like
+  // "VIA MOBILE - PYMT" being present.
+  const raw = description;
+  // Lazy-import to avoid circular dep (normalizer doesn't import this file).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { normalizeMerchant } = require("./merchant-normalizer") as typeof import("./merchant-normalizer");
+  const normalized = normalizeMerchant(description);
+  const candidates = raw === normalized ? [raw] : [normalized, raw];
+
   const entries = Object.entries(SUBCATEGORY_KEYWORDS) as [Subcategory, RegExp[]][];
   for (const [subcategory, patterns] of entries) {
     if (subcategory === "uncategorized" || subcategory === "one-off") continue;
     for (const pattern of patterns) {
-      if (pattern.test(description)) {
-        return { category: mapToCategory(subcategory), subcategory, confidence: 0.7 };
+      for (const candidate of candidates) {
+        if (pattern.test(candidate)) {
+          return { category: mapToCategory(subcategory), subcategory, confidence: 0.7 };
+        }
       }
     }
   }
