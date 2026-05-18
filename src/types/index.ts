@@ -26,6 +26,8 @@ export interface StatementData {
     statementPeriod?: { from: string; to: string };
     openingBalance?: number;
     closingBalance?: number;
+    totalPaidIn?: number;
+    totalWithdrawn?: number;
   };
   summary: {
     totalCredits: number;
@@ -238,7 +240,7 @@ export type Subcategory =
   | "travel" | "office-supplies" | "professional-services"
   | "supplies" | "director-loans" | "property-management" | "property-income"
   | "food-dining"
-  | "one-off";
+  | "one-off" | "uncategorized";
 
 export interface CurrentPosition {
   balance: number | null;

@@ -39,12 +39,10 @@ export async function saveDocument(
   if (error) return false;
 
   // Also record to statement_history for accumulated learning
-  const income = data.transactions
-    .filter((t) => t.type === "credit")
-    .reduce((s, t) => s + t.amount, 0);
-  const expenses = data.transactions
-    .filter((t) => t.type === "debit")
-    .reduce((s, t) => s + t.amount, 0);
+  // Use statement-level totals from the PDF header when available (more accurate).
+  // Fall back to summing transactions for CSV or statements without header totals.
+  const income = data.summary.totalCredits;
+  const expenses = data.summary.totalDebits;
 
   const { error: historyError } = await supabase.from("statement_history").insert({
     company_id: companyId,

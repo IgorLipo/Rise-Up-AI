@@ -377,7 +377,7 @@ export async function researchVendorWithAI(
     return {
       canonicalName: json.canonicalName ?? merchantName,
       category: json.category ?? "Uncategorized",
-      subcategory: json.subcategory ?? "one-off",
+      subcategory: json.subcategory ?? "uncategorized",
       typicalPurpose: json.typicalPurpose ?? "",
       isBusiness: json.isBusiness ?? null,
       confidence: Math.min(1, Math.max(0, json.confidence ?? 0.5)),
@@ -413,7 +413,7 @@ export async function researchAndCacheVendor(
       companyId,
       canonicalName,
       aliases: [merchantName],
-      subcategory: "one-off" as Subcategory,
+      subcategory: "uncategorized" as Subcategory,
       category: "Uncategorized",
       typicalAmountMin: null,
       typicalAmountMax: null,
@@ -502,7 +502,7 @@ export async function ensureCompleteVendorIntel(
       existing.isFirstSeen = false;
       existing.direction = vendor.direction;
       // Update subcategory if live classification differs (unless user-set)
-      if (existing.source !== "user" && vendor.subcategory !== "one-off" && vendor.subcategory !== existing.subcategory) {
+      if (existing.source !== "user" && vendor.subcategory !== "one-off" && vendor.subcategory !== "uncategorized" && vendor.subcategory !== existing.subcategory) {
         existing.subcategory = vendor.subcategory as any;
         existing.category = vendor.category;
       }

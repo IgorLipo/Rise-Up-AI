@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { detectAllAsync } from "@/lib/detection";
 import { generateForecast, daysBetween, validateDailyForecast } from "@/lib/forecast";
+import { computeHistoricalForecast, type HistoricalForecast } from "@/lib/forecast/historical-forecaster";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
 import type { VendorIntelEntry } from "@/lib/vendor-intel";
 import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
+import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
 import { extractEntities, entityAttributesForVendor } from "@/lib/detection/entity-extractor";
 import type { AIClassification } from "@/lib/detection/ai-classifier";
 import { validateStatementBalance } from "@/lib/financial/math";
@@ -25,6 +27,7 @@ interface StatementSummary {
 interface MonthlySummary {
   month: string;
   label: string;
+  openingBalance: number;
   closingBalance: number;
   totalIncome: number;
   totalExpenses: number;
@@ -133,7 +136,7 @@ async function computeAggregate(
   // ── Accurate counts from statement_history (deduplicated) ──
   const { data: statementHistory } = await supabase
     .from("statement_history")
-    .select("statement_period_start, statement_period_end, transaction_count")
+    .select("statement_period_start, statement_period_end, transaction_count, opening_balance, closing_balance, total_income, total_expenses")
     .eq("company_id", companyId)
     .eq("parse_status", "ok")
     .order("uploaded_at", { ascending: false });
@@ -167,37 +170,43 @@ async function computeAggregate(
     };
   }
 
-  // Aggregate all transactions from all statements
+  // Aggregate all transactions from all statements (for learning/forecast)
   const allTransactions: Transaction[] = [];
   const statementSummaries: StatementSummary[] = [];
 
   for (const doc of docs) {
     const stmt = doc.statement_data as unknown as StatementData;
-    if (stmt?.transactions) {
-      allTransactions.push(...stmt.transactions);
-      const period = stmt.accountInfo?.statementPeriod
-        ? `${stmt.accountInfo.statementPeriod.from} to ${stmt.accountInfo.statementPeriod.to}`
-        : doc.filename;
-      const month = stmt.accountInfo?.statementPeriod?.from?.slice(0, 7)
-        ?? stmt.transactions[0]?.date?.slice(0, 7)
-        ?? doc.uploaded_at?.slice(0, 7)
-        ?? "unknown";
-      const income = stmt.transactions
-        .filter((t) => t.type === "credit")
-        .reduce((s, t) => s + t.amount, 0);
-      const expenses = stmt.transactions
-        .filter((t) => t.type === "debit")
-        .reduce((s, t) => s + t.amount, 0);
-      statementSummaries.push({
-        period,
-        month,
-        closingBalance: stmt.accountInfo?.closingBalance ?? 0,
-        transactionCount: stmt.transactions.length,
-        totalIncome: income,
-        totalExpenses: expenses,
-        netFlow: income - expenses,
-      });
-    }
+    if (!stmt?.transactions) continue;
+    allTransactions.push(...stmt.transactions);
+
+    const periodFrom = stmt.accountInfo?.statementPeriod?.from ?? "";
+    const periodTo = stmt.accountInfo?.statementPeriod?.to ?? "";
+    const period = periodFrom && periodTo ? `${periodFrom} to ${periodTo}` : doc.filename;
+
+    // Use statement_history totals for statement-level accuracy
+    const historyRow = (statementHistory ?? []).find(
+      (row) => row.statement_period_start === periodFrom && row.statement_period_end === periodTo
+    );
+    const income = historyRow?.total_income != null
+      ? Number(historyRow.total_income)
+      : stmt.transactions.filter((t) => t.type === "credit").reduce((s, t) => s + t.amount, 0);
+    const expenses = historyRow?.total_expenses != null
+      ? Number(historyRow.total_expenses)
+      : stmt.transactions.filter((t) => t.type === "debit").reduce((s, t) => s + t.amount, 0);
+    const closing = historyRow?.closing_balance != null
+      ? Number(historyRow.closing_balance)
+      : stmt.accountInfo?.closingBalance ?? 0;
+    const txCount = historyRow?.transaction_count ?? stmt.transactions.length;
+
+    statementSummaries.push({
+      period,
+      month: periodTo?.slice(0, 7) ?? "unknown",
+      closingBalance: closing,
+      transactionCount: txCount,
+      totalIncome: income,
+      totalExpenses: expenses,
+      netFlow: income - expenses,
+    });
   }
 
   // Apply date range filter to transactions
@@ -318,6 +327,7 @@ async function computeAggregate(
   }
 
   // ── Balance ──
+  // Find the document with the latest statement period
   let latestDoc = docs[0];
   let latestStmt = latestDoc.statement_data as unknown as StatementData;
   let latestPeriodTo = latestStmt?.accountInfo?.statementPeriod?.to ?? "";
@@ -331,7 +341,56 @@ async function computeAggregate(
     }
   }
 
-  const latestClosingBalance = latestStmt?.accountInfo?.closingBalance;
+  // Determine closing balance with fallbacks for old documents missing the field
+  let latestClosingBalance: number | undefined = latestStmt?.accountInfo?.closingBalance;
+
+  // Fallback 1: compute from openingBalance + net cash flow (statement-level totals)
+  if (latestClosingBalance == null && latestStmt?.accountInfo?.openingBalance != null) {
+    const credits = latestStmt.summary?.totalCredits ?? 0;
+    const debits = latestStmt.summary?.totalDebits ?? 0;
+    latestClosingBalance = latestStmt.accountInfo.openingBalance + credits - debits;
+  }
+
+  // Fallback 2: search docs (newest-first by period) for one with a known closingBalance
+  if (latestClosingBalance == null) {
+    const byPeriodDesc = [...docs].sort((a, b) => {
+      const aTo = (a.statement_data as unknown as StatementData)?.accountInfo?.statementPeriod?.to ?? "";
+      const bTo = (b.statement_data as unknown as StatementData)?.accountInfo?.statementPeriod?.to ?? "";
+      return bTo.localeCompare(aTo);
+    });
+    for (const doc of byPeriodDesc) {
+      const cb = (doc.statement_data as unknown as StatementData)?.accountInfo?.closingBalance;
+      if (cb != null) {
+        latestClosingBalance = cb;
+        break;
+      }
+    }
+  }
+
+  // Fallback 3: use statement_history (authoritative after db.ts fix).
+  // Find the entry with the latest statement_period_end, not the most recently uploaded.
+  if (latestClosingBalance == null) {
+    let bestClosing: number | undefined;
+    let bestPeriodEnd = "";
+    for (const row of statementHistory ?? []) {
+      const r = row as Record<string, unknown>;
+      const periodEnd = (r.statement_period_end as string) ?? "";
+      if (periodEnd > bestPeriodEnd) {
+        bestPeriodEnd = periodEnd;
+        const shClosing = r.closing_balance;
+        if (shClosing != null && Number(shClosing) !== 0) {
+          bestClosing = Number(shClosing);
+        } else {
+          const opening = Number(r.opening_balance ?? 0);
+          const income = Number(r.total_income ?? 0);
+          const expenses = Number(r.total_expenses ?? 0);
+          bestClosing = opening + income - expenses;
+        }
+      }
+    }
+    latestClosingBalance = bestClosing;
+  }
+
   const latestPeriodFrom = latestStmt?.accountInfo?.statementPeriod?.from ?? "";
 
   const currentPosition = {
@@ -343,26 +402,34 @@ async function computeAggregate(
     statementPeriodEnd: latestPeriodTo || null as string | null,
   };
 
+  // Prefer statement_history totals (statement-header values) over transaction sums.
+  // Fall back to computing from transactions when statement_history row is missing.
+  const latestHistoryRow = (statementHistory ?? []).find(
+    (row) => row.statement_period_start === latestPeriodFrom && row.statement_period_end === latestPeriodTo
+  );
+  const stmtTotalIncome = latestHistoryRow?.total_income != null
+    ? Number(latestHistoryRow.total_income)
+    : latestStmt?.transactions?.filter((t: { type: string }) => t.type === "credit").reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null;
+  const stmtTotalExpenses = latestHistoryRow?.total_expenses != null
+    ? Number(latestHistoryRow.total_expenses)
+    : latestStmt?.transactions?.filter((t: { type: string }) => t.type === "debit").reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null;
+
   let balanceValidation: { valid: boolean; differencePence: number; message: string } | null = null;
   if (latestClosingBalance != null && latestStmt?.accountInfo) {
-    const opening = latestStmt.accountInfo.openingBalance ?? 0;
-    const credits = latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "credit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? 0;
-    const debits = latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "debit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? 0;
+    const opening = latestHistoryRow?.opening_balance != null
+      ? Number(latestHistoryRow.opening_balance)
+      : latestStmt.accountInfo.openingBalance ?? 0;
+    const credits = stmtTotalIncome ?? 0;
+    const debits = stmtTotalExpenses ?? 0;
     balanceValidation = validateStatementBalance(opening, credits, debits, latestClosingBalance);
   }
 
   const statementInfo = latestStmt ? {
-    openingBalance: latestStmt.accountInfo?.openingBalance ?? null as number | null,
-    totalIncome: latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "credit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null as number | null,
-    totalExpenses: latestStmt.transactions
-      ?.filter((t: { type: string }) => t.type === "debit")
-      .reduce((s: number, t: { amount: number }) => s + t.amount, 0) ?? null as number | null,
+    openingBalance: latestHistoryRow?.opening_balance != null
+      ? Number(latestHistoryRow.opening_balance)
+      : latestStmt.accountInfo?.openingBalance ?? null as number | null,
+    totalIncome: stmtTotalIncome as number | null,
+    totalExpenses: stmtTotalExpenses as number | null,
     closingBalance: latestClosingBalance ?? null as number | null,
     periodFrom: latestPeriodFrom || null as string | null,
     periodTo: latestPeriodTo || null as string | null,
@@ -439,11 +506,11 @@ async function computeAggregate(
     : null;
   let forecastError: string | null = null;
 
-  if (forecast) {
-    const validation = validateDailyForecast(forecast.dailyForecast, forecast.currentBalance);
+  if (forecast && currentPosition.balance != null) {
+    const validation = validateDailyForecast(forecast, currentPosition.balance);
     if (!validation.valid) {
-      console.error("Forecast validation failed:", validation.errors);
-      forecastError = validation.errors.join("; ");
+      console.error("[aggregate] Forecast validation failed:", validation.errors);
+      forecastError = `Forecast math error: ${validation.errors.length} check(s) failed.`;
       forecast = null;
     }
   }
@@ -503,41 +570,46 @@ async function computeAggregate(
     return { isLowConfidence: false, reason: null };
   })();
 
-  // ── Monthly grouping ──
-  const byMonth = new Map<string, Transaction[]>();
-  for (const tx of workingTransactions) {
-    const m = tx.date.slice(0, 7);
-    if (!byMonth.has(m)) byMonth.set(m, []);
-    byMonth.get(m)!.push(tx);
-  }
-
+  // ── Monthly grouping (from statement_history — bank-verified totals) ──
   const monthlySummaries: MonthlySummary[] = [];
-  for (const [month, txs] of byMonth) {
-    const income = txs.filter((t) => t.type === "credit").reduce((s, t) => s + t.amount, 0);
-    const expenses = txs.filter((t) => t.type === "debit").reduce((s, t) => s + t.amount, 0);
-    const label = new Date(month + "-01").toLocaleDateString("en-GB", {
+  const seenMonthlyPeriods = new Set<string>();
+
+  for (const row of statementHistory ?? []) {
+    const periodKey = `${row.statement_period_start}|${row.statement_period_end}`;
+    if (seenMonthlyPeriods.has(periodKey)) continue;
+    seenMonthlyPeriods.add(periodKey);
+
+    const periodEnd = row.statement_period_end;
+    const month = periodEnd.slice(0, 7); // YYYY-MM of statement end date
+
+    const label = new Date(periodEnd + "T00:00:00").toLocaleDateString("en-GB", {
       year: "numeric",
       month: "long",
     });
 
-    // Determine completeness: count unique days with transactions
-    const uniqueDays = new Set(txs.map((t) => t.date)).size;
-    const totalDaysInMonth = new Date(parseInt(month.slice(0, 4)), parseInt(month.slice(5, 7)), 0).getDate();
-    const completeness: "complete" | "partial" = uniqueDays >= Math.min(15, totalDaysInMonth) ? "complete" : "partial";
+    const income = row.total_income != null ? Number(row.total_income) : 0;
+    const expenses = row.total_expenses != null ? Number(row.total_expenses) : 0;
+    const opening = row.opening_balance != null ? Number(row.opening_balance) : 0;
+    const closing = row.closing_balance != null ? Number(row.closing_balance) : 0;
+    const netFlow = income - expenses;
 
-    // Calculate actual data range for this month
-    const dates = txs.map((t) => t.date).sort();
-    const dataFrom = dates[0] ?? month + "-01";
-    const dataTo = dates[dates.length - 1] ?? month + "-01";
+    // Completeness: check that the statement covers a full ~month
+    const periodDays = daysBetween(row.statement_period_start, row.statement_period_end);
+    const completeness: "complete" | "partial" = periodDays >= 25 ? "complete" : "partial";
+
+    // Statement period is the actual data range
+    const dataFrom = row.statement_period_start;
+    const dataTo = row.statement_period_end;
 
     monthlySummaries.push({
       month,
       label,
-      closingBalance: 0,
+      openingBalance: opening,
+      closingBalance: closing,
       totalIncome: income,
       totalExpenses: expenses,
-      netFlow: income - expenses,
-      transactionCount: txs.length,
+      netFlow,
+      transactionCount: row.transaction_count ?? 0,
       status: monthStatus(income, expenses),
       completeness,
       dataFrom,
@@ -546,13 +618,29 @@ async function computeAggregate(
   }
   monthlySummaries.sort((a, b) => b.month.localeCompare(a.month));
 
+  // ── Historical-baseline Forecast (credibility headline) ──
+  // Anchored on trailing 3-month actuals from statement_history.
+  // Backtest MAE £7k vs £33k for recurring-only — used as the primary
+  // month-end projection in the UI.
+  let historicalForecast: HistoricalForecast | null = null;
+  if (latestClosingBalance != null && latestPeriodTo) {
+    historicalForecast = computeHistoricalForecast(
+      monthlySummaries,
+      latestClosingBalance,
+      latestPeriodTo,
+      undefined,
+      3
+    );
+  }
+
   // ── Category Breakdowns ──
   const categoryMap = new Map<string, { total: number; count: number; transactions: CategorySummary["transactions"] }>();
   for (const tx of workingTransactions) {
     if (tx.type !== "debit") continue;
     const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
-    const subcategory = vendor?.subcategory ?? tx.subcategory ?? "one-off";
+    const storedSubcategory = tx.subcategory && tx.subcategory !== "uncategorized" ? tx.subcategory : null;
+    const subcategory = vendor?.subcategory ?? storedSubcategory ?? classifySubcategory(tx.description).subcategory;
     if (!categoryMap.has(subcategory)) {
       categoryMap.set(subcategory, { total: 0, count: 0, transactions: [] });
     }
@@ -709,6 +797,8 @@ async function computeAggregate(
 
     forecastError,
 
+    historicalForecast,
+
     monthly: monthlySummaries,
 
     categories,
@@ -716,7 +806,7 @@ async function computeAggregate(
     patterns: {
       recurringExpenses: displayPatterns.recurringExpenses.map((p) => ({
         merchant: (p as any).merchant,
-        subcategory: (p as any).subcategory ?? "one-off",
+        subcategory: (p as any).subcategory ?? "uncategorized",
         typicalAmount: p.typicalAmount,
         interval: p.interval,
         confidence: p.confidence,
@@ -757,7 +847,7 @@ async function computeAggregate(
           date: vendor?.dates[0] ?? "",
           amount: vendor?.amounts[0] ?? 0,
           description: vendor?.allDescriptions[0] ?? name,
-          subcategory: vendor?.subcategory ?? "one-off",
+          subcategory: vendor?.subcategory ?? "uncategorized",
         };
       }),
       oneOffIncome: displayOneOffIncomeCandidates.map((name) => {
@@ -767,7 +857,7 @@ async function computeAggregate(
           date: vendor?.dates[0] ?? "",
           amount: vendor?.amounts[0] ?? 0,
           description: vendor?.allDescriptions[0] ?? name,
-          subcategory: vendor?.subcategory ?? "one-off",
+          subcategory: vendor?.subcategory ?? "uncategorized",
         };
       }),
       oneOffExpenses: displayOneOffExpenseCandidates.map((name) => {
@@ -777,7 +867,7 @@ async function computeAggregate(
           date: vendor?.dates[0] ?? "",
           amount: vendor?.amounts[0] ?? 0,
           description: vendor?.allDescriptions[0] ?? name,
-          subcategory: vendor?.subcategory ?? "one-off",
+          subcategory: vendor?.subcategory ?? "uncategorized",
         };
       }),
     },

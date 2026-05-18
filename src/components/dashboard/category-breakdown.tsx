@@ -40,7 +40,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   supplies: "Shopping",
   subscriptions: "Subscriptions",
   "property-income": "Other Income",
-  "one-off": "Uncategorized",
+  "one-off": "One-Off",
+  "uncategorized": "Uncategorized",
 };
 
 function categoryLabel(key: string): string {
@@ -92,8 +93,8 @@ export function CategoryBreakdown({ categories, onCategoryClick, activeCategory 
                 <span className="font-mono text-xs text-zinc-600 w-20 text-right">
                   {formatCurrency(cat.total)}
                 </span>
-                <span className="font-mono text-xs text-zinc-400 w-10 text-right">
-                  {cat.percentage.toFixed(0)}%
+                <span className="font-mono text-xs text-zinc-400 w-16 text-right">
+                  {cat.count} &middot; {cat.percentage.toFixed(0)}%
                 </span>
                 <svg
                   className={`w-3 h-3 text-zinc-300 transition-transform ${isExpanded ? "rotate-180" : ""}`}

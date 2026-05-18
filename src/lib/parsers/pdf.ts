@@ -18,7 +18,7 @@ export async function parsePDFStatement(buffer: Buffer): Promise<StatementData> 
   }
 
   const accountInfo = extractAccountInfo(text);
-  const summary = computeSummary(transactions);
+  const summary = computeSummary(transactions, accountInfo);
   const monthlyBreakdown = computeMonthlyBreakdown(transactions);
   const categoryBreakdown = computeCategoryBreakdown(transactions);
 
@@ -371,6 +371,10 @@ function extractAccountInfo(text: string): StatementData["accountInfo"] {
     extractBalance(text, "New Balance") ??
     extractBalance(text, "Closing Balance");
 
+  // Extract statement-level Paid In / Withdrawn totals (authoritative)
+  info.totalPaidIn = extractBalance(text, "Paid In");
+  info.totalWithdrawn = extractBalance(text, "Withdrawn");
+
   return info;
 }
 
@@ -421,13 +425,15 @@ function normalizeDate(raw: string): string | null {
 }
 
 function computeSummary(
-  transactions: Transaction[]
+  transactions: Transaction[],
+  accountInfo?: StatementData["accountInfo"]
 ): StatementData["summary"] {
   const credits = transactions.filter((t) => t.type === "credit");
   const debits = transactions.filter((t) => t.type === "debit");
 
-  const totalCredits = credits.reduce((sum, t) => sum + t.amount, 0);
-  const totalDebits = debits.reduce((sum, t) => sum + t.amount, 0);
+  // Use statement-level totals when available (more reliable than summing parsed transactions)
+  const totalCredits = accountInfo?.totalPaidIn ?? credits.reduce((sum, t) => sum + t.amount, 0);
+  const totalDebits = accountInfo?.totalWithdrawn ?? debits.reduce((sum, t) => sum + t.amount, 0);
 
   return {
     totalCredits,

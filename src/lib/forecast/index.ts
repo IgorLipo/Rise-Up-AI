@@ -18,8 +18,7 @@ export interface CalculationAudit {
   highConfidenceExpenses: number;
   mediumConfidenceIncome: number;
   mediumConfidenceExpenses: number;
-  predictedRangeLow: number;
-  predictedRangeHigh: number;
+  predictedBalance: number;
 }
 
 export interface MonthEndForecast {
@@ -356,8 +355,7 @@ export function generateForecast(
       highConfidenceExpenses: remainingExpenses,
       mediumConfidenceIncome: mediumIncomeTotal,
       mediumConfidenceExpenses: mediumExpensesTotal,
-      predictedRangeLow: currentBalance + remainingIncome - remainingExpenses,
-      predictedRangeHigh: currentBalance + remainingIncome + mediumIncomeTotal - remainingExpenses - mediumExpensesTotal,
+      predictedBalance: currentBalance + remainingIncome - remainingExpenses,
     },
     catchUpEstimate: null, // populated by the aggregate route, not here
   };
@@ -375,41 +373,44 @@ export interface ForecastValidationResult {
 }
 
 export function validateDailyForecast(
-  forecast: DailyForecast[],
+  forecast: MonthEndForecast,
   startBalance: number,
 ): ForecastValidationResult {
   const errors: string[] = [];
+  const days = forecast.dailyForecast;
 
-  if (forecast.length === 0) {
+  if (days.length === 0) {
     return { valid: true, errors: [] };
   }
 
-  let totalIncome = 0;
-  let totalExpenses = 0;
-
-  for (let i = 0; i < forecast.length; i++) {
-    const day = forecast[i];
-    const diff = Math.abs((day.openingBalance + day.expectedIncome - day.expectedExpenses) - day.closingBalance);
-    if (diff >= 0.01) {
-      errors.push(`${day.date}: opening + income - expenses ≠ closing (off by ${diff.toFixed(4)})`);
+  // Check each day: opening + income - expenses = closing
+  for (const day of days) {
+    const expectedClosing = day.openingBalance + day.expectedIncome - day.expectedExpenses;
+    if (Math.abs(expectedClosing - day.closingBalance) > 0.01) {
+      errors.push(
+        `${day.date}: opening (${day.openingBalance}) + income (${day.expectedIncome}) - expenses (${day.expectedExpenses}) = ${expectedClosing}, but closing is ${day.closingBalance} (diff: ${(expectedClosing - day.closingBalance).toFixed(2)})`
+      );
     }
-
-    if (i > 0) {
-      const prevDay = forecast[i - 1];
-      const boundaryDiff = Math.abs(prevDay.closingBalance - day.openingBalance);
-      if (boundaryDiff >= 0.01) {
-        errors.push(`${day.date}: previous closing ≠ current opening (off by ${boundaryDiff.toFixed(4)})`);
-      }
-    }
-
-    totalIncome += day.expectedIncome;
-    totalExpenses += day.expectedExpenses;
   }
 
-  const monthEndBalance = forecast[forecast.length - 1].closingBalance;
-  const fullDiff = Math.abs((startBalance + totalIncome - totalExpenses) - monthEndBalance);
-  if (fullDiff >= 0.01) {
-    errors.push(`Full forecast: (start + income - expenses) ≠ monthEnd (off by ${fullDiff.toFixed(4)})`);
+  // Check day-to-day boundaries: prev.closing = next.opening
+  for (let i = 1; i < days.length; i++) {
+    if (Math.abs(days[i - 1].closingBalance - days[i].openingBalance) > 0.01) {
+      errors.push(
+        `Day boundary ${days[i - 1].date} → ${days[i].date}: prev.closing (${days[i - 1].closingBalance}) != next.opening (${days[i].openingBalance})`
+      );
+    }
+  }
+
+  // Check full forecast totals
+  const totalIncome = days.reduce((s, d) => s + d.expectedIncome, 0);
+  const totalExpenses = days.reduce((s, d) => s + d.expectedExpenses, 0);
+  const expectedMonthEnd = startBalance + totalIncome - totalExpenses;
+  const actualMonthEnd = days[days.length - 1].closingBalance;
+  if (Math.abs(expectedMonthEnd - actualMonthEnd) > 0.01) {
+    errors.push(
+      `Full forecast: startBalance (${startBalance}) + totalIncome (${totalIncome}) - totalExpenses (${totalExpenses}) = ${expectedMonthEnd}, but month-end closing is ${actualMonthEnd}`
+    );
   }
 
   return { valid: errors.length === 0, errors };

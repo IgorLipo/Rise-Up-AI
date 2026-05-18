@@ -5,6 +5,7 @@ const NOISE_PATTERNS = [
   /\bREF:?\s*\S+/gi,
   /\bFP\s+\d{2}\/\d{2}\/\d{2}\s+\d+\s*\w*\b/gi,
   /\b\d{6,}\b/g,                        // Pure digit sequences (reference numbers)
+  /\b\d{10,}[A-Za-z]?\b/g,              // Long digit sequences with optional letter suffix
   // Only strip alphanumeric codes with 3+ consecutive digits (real reference codes).
   // This preserves company names like "UNITED92" (letters then short number suffix).
   /\b[A-Z]{1,3}[0-9]{3,}[A-Z0-9]*\b/g,
@@ -22,6 +23,20 @@ const NOISE_PATTERNS = [
   /\b(?:DD|SO|BP|CR)\s+(?=[A-Z])/gi,   // DD=Direct Debit, SO=Standing Order, BP=Bill Payment, CR=Credit
   // Date-like noise at end of descriptions
   /\b\d{2}[A-Z]{3}\d{2}\b/g,           // "03JUL25" date format
+  // Invoice/reference codes with delimiters — hyphens prevent digit-sequence patterns from matching
+  /\b(?:INV|WC|RFQ|PO|ORD)\s*[-:#]?\s*\d{2,}\b/gi,
+  // MONZO invoice references: "MONZO INV-12345" → "MONZO"
+  /\bMONZO\s+(?:INV|PAY|PYMT|PMT)\s*[-:#]?\s*\d+\b/gi,
+  // Payment reference codes: "PMT 12345", "PMT-00123"
+  /\bPMT\s*[-:#]?\s*\d+\b/gi,
+  // Policy/agreement numbers: "POLICY 123456"
+  /\b(?:POLICY|AGREEMENT|CONTRACT)\s*(?:NO|NUMBER|REF)?\s*[-:#]?\s*\d+\b/gi,
+  // Company legal suffixes — strip for canonical name purposes
+  /\b(?:LTD|LIMITED|PLC|LLP|INC|CORPORATION|CORP|GROUP|HOLDINGS|HOLDING)\b/gi,
+  // Transaction type descriptors — not part of merchant name
+  /\bINITIAL\s+PAYMENT\b/gi,
+  /\bREGULAR\s+PAYMENT\b/gi,
+  /\bMONTHLY\s+PAYMENT\b/gi,
 ];
 
 export function normalizeMerchant(description: string): string {
@@ -42,6 +57,21 @@ const ADDRESS_NOISE = new Set([
   "nth", "north", "sth", "south", "est", "east", "wst", "west",
   "co", "gb", "uk",
   "via", "mobile", "pymt",
+  // Road/street types (full forms and common UK abbreviations)
+  "road", "rd", "street", "st", "avenue", "ave", "lane", "ln",
+  "close", "drive", "dr", "crescent", "cres", "court", "ct",
+  "way", "place", "pl", "gardens", "gdns", "grove", "terrace",
+  "mews", "walk", "parade", "hill", "mount", "rise", "vale",
+  "view", "fields", "green", "wood", "heath", "common", "end",
+  "broadway", "circus", "square", "sq", "wharf", "quay",
+  "bridge", "row", "path", "gate", "approach", "courtyard",
+  "park", // "park" as address suffix (e.g. "Regents Park"), not business
+  "estate", "est", // "estate" as in "housing estate" / "trading estate"
+  "centre", "center", "central", // industrial/business centre
+  "north", "south", "east", "west", // already present in abbreviated form above
+  "upper", "lower", "great", "little",
+  // Company legal suffixes
+  "ltd", "limited", "plc", "llp", "inc", "corp", "corporation", "group", "holdings", "holding",
 ]);
 
 // Extract the core merchant name — skip address/unit noise and take meaningful words.

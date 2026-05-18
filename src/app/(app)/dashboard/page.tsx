@@ -9,7 +9,6 @@ import { DateRangeSelector, type DateRangePreset } from "@/components/dashboard/
 import { TabNavigation } from "@/components/dashboard/tab-navigation";
 import { ForecastTab } from "@/components/dashboard/forecast-tab";
 import { HistoryTab } from "@/components/dashboard/history-tab";
-import { IntelligenceTab } from "@/components/dashboard/intelligence-tab";
 import { TransactionsTab } from "@/components/dashboard/transactions-tab";
 
 interface AggregateResponse {
@@ -55,14 +54,34 @@ interface AggregateResponse {
     oneOffHistoryMonths?: number;
   }) | null;
   forecastError?: string | null;
+  historicalForecast: {
+    predictedMonthEnd: number;
+    expectedIncome: number;
+    expectedExpenses: number;
+    expectedNetFlow: number;
+    daysRemaining: number;
+    daysInMonth: number;
+    monthsUsed: number;
+    avgMonthlyIncome: number;
+    avgMonthlyExpenses: number;
+    avgMonthlyNet: number;
+    confidence: number;
+    method: string;
+    asOfDate: string;
+    monthEndDate: string;
+  } | null;
   monthly: Array<{
     month: string;
     label: string;
+    openingBalance: number;
     totalIncome: number;
     totalExpenses: number;
     netFlow: number;
     transactionCount: number;
     status: "safe" | "watch" | "risk" | "critical";
+    completeness?: "complete" | "partial";
+    dataFrom?: string;
+    dataTo?: string;
   }>;
   categories: Array<{
     category: string;
@@ -318,7 +337,6 @@ function DashboardContent() {
   const TABS = [
     { id: "forecast", label: "Current Forecast" },
     { id: "history", label: "Monthly History" },
-    { id: "intelligence", label: "Accumulated Intelligence" },
     { id: "transactions", label: "Transactions" },
   ];
 
@@ -387,6 +405,7 @@ function DashboardContent() {
             totalTransactions={data.totalTransactions}
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
+            historicalForecast={data.historicalForecast}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
@@ -402,18 +421,6 @@ function DashboardContent() {
             categories={data.categories}
             suspicious={data.suspicious}
             onViewTransactions={(month) => router.push(`/transactions?month=${month}`)}
-          />
-        </div>
-      )}
-
-      {activeTab === "intelligence" && (
-        <div className="mt-5">
-          <IntelligenceTab
-            vendors={data.vendors}
-            crossMonthInsights={data.crossMonthInsights}
-            patterns={data.patterns}
-            entities={data.entities}
-            newVendors={data.newVendors}
           />
         </div>
       )}
@@ -440,6 +447,7 @@ function DashboardContent() {
             totalTransactions={data.totalTransactions}
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
+            historicalForecast={data.historicalForecast}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
