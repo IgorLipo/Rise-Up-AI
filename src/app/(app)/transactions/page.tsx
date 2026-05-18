@@ -143,6 +143,23 @@ function TransactionsPageInner() {
       .catch(() => setLoading(false));
   }, [companyId]);
 
+  // Resolve a transaction's subcategory with the priority order:
+  //   1. vendor.subcategory (cross-month learning — catches the property-income
+  //      promotion for recurring tenant credits that no keyword matched)
+  //   2. tx.subcategory if non-default (post-reclassify canonical value)
+  //   3. live classifier (final fallback)
+  const resolveSubcategory = (tx: Transaction): string => {
+    const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    const vendor = vendorMap.get(key);
+    if (vendor && vendor.subcategory && vendor.subcategory !== "uncategorized" && vendor.subcategory !== "one-off") {
+      return vendor.subcategory;
+    }
+    if (tx.subcategory && tx.subcategory !== "uncategorized" && tx.subcategory !== "one-off") {
+      return tx.subcategory;
+    }
+    return classifySubcategory(tx.description).subcategory;
+  };
+
   const filtered = useMemo(() => {
     let result = transactions;
 
@@ -158,13 +175,7 @@ function TransactionsPageInner() {
         return suspiciousMap.has(key);
       });
     } else if (filter !== "all") {
-      result = result.filter((tx) => {
-        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
-        const vendor = vendorMap.get(key);
-        if (vendor) return vendor.subcategory === filter;
-        const { subcategory } = classifySubcategory(tx.description);
-        return subcategory === filter;
-      });
+      result = result.filter((tx) => resolveSubcategory(tx) === filter);
     }
 
     // Apply text search
@@ -174,7 +185,7 @@ function TransactionsPageInner() {
         const desc = tx.description.toLowerCase();
         const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
         const vendor = vendorMap.get(key);
-        const subcat = vendor?.subcategory ?? classifySubcategory(tx.description).subcategory;
+        const subcat = resolveSubcategory(tx);
         const catLabel = subcat.replace(/-/g, " ");
         return desc.includes(q) || catLabel.includes(q) || (vendor?.canonicalName?.toLowerCase().includes(q));
       });
@@ -368,22 +379,29 @@ function TransactionsPageInner() {
                   <div className="min-w-0">
                     <div className="text-zinc-700 truncate">{tx.description}</div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {vendor && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500">
-                          {vendor.subcategory.replace(/-/g, " ")}
-                          {vendor.recurrencePattern ? ` · ${vendor.recurrencePattern}` : ""}
-                          {vendor.appearanceCount > 1 ? ` · ${vendor.appearanceCount}x` : ""}
-                        </span>
-                      )}
+                      {(() => {
+                        const subcat = resolveSubcategory(tx);
+                        const isUncat = subcat === "uncategorized" || subcat === "one-off";
+                        return (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              isUncat
+                                ? "bg-zinc-50 text-zinc-400"
+                                : "bg-zinc-100 text-zinc-600"
+                            }`}
+                          >
+                            {subcat.replace(/-/g, " ")}
+                            {vendor?.recurrencePattern ? ` · ${vendor.recurrencePattern}` : ""}
+                            {vendor && vendor.appearanceCount > 1 ? ` · ${vendor.appearanceCount}x` : ""}
+                          </span>
+                        );
+                      })()}
                       {suspicious && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                           suspicious.riskLevel === "high" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                         }`}>
                           {suspicious.riskLevel}
                         </span>
-                      )}
-                      {!vendor && !suspicious && (
-                        <span className="text-[10px] text-zinc-300">unknown</span>
                       )}
                     </div>
                   </div>
