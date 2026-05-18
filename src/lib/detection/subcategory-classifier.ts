@@ -20,7 +20,9 @@ interface ClassificationResult {
 const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
   "food-dining": [
     // Major chains
-    /\bcosta\b/i, /\bstarbucks\b/i, /\bpret\s*a\s*manger\b/i, /\bnero\b/i,
+    /\bcosta\b/i, /\bstarbucks\b/i,
+    /\bpret\b/i,                        // matches "PRET" or "PRET A MANGER" — Pret never appears outside food context
+    /\bnero\b/i,
     /\bcaff(?:[eè])\s*nero\b/i, /\bgreggs\b/i, /\bmcdonald/i,
     /\b(?:kfc|kentucky)\b/i, /\bburger\s*king\b/i, /\bdomino.?s\b/i,
     /\bpizza\s*hut\b/i, /\bpizza\s*express\b/i, /\bwagamama\b/i,
@@ -36,6 +38,24 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bbatch['’]\s*-\s*leicester\b/i,
     /\bchaiiwala\b/i, /\bthe\s*stage\b/i,
     /\bo\s*ribatejo\b/i, /\bcaste?ro?s?\s*convenience\b/i,
+    // More Leicester / Midlands food spots
+    /\bcoyote\s*ugly\b/i, /\bwoodys\b/i, /\bgraffiti\s*spiri/i,
+    /\bthe\s*italian\s*club\b/i, /\bwreckfish\b/i, /\bla\s*maison\b/i,
+    /\btattu\b|t\s*a\s*t\s*t\s*u/i, /\boodles\b/i, /\bbursa\s*shawarma\b/i,
+    /\bmcgorums\b/i, /\bpepes\s*piri\s*piri\b/i, /\bsexy\s*fish\b/i,
+    /\bjoejuice\b/i, /\bmr\s*bao\b/i,
+    /\bbsc\s*plaza\b/i, /\bndaba\b/i,
+    /\bandkith\b/i, /\bcltcl\b/i,
+    // More UK restaurants / cafes
+    /\bsaba\s*uk\b/i, /\bthe\s*antelope\b/i, /\bantelope\s*sw\b/i,
+    /\bthe\s*ivy\b/i, /\baroma\s*shawarma\b/i, /\bbursa\s*shawarma\b/i,
+    /\bbombay\s*bites\b/i, /\bzest\s*and\s*co\b/i,
+    /\ben\s*steak\b/i, /\bls\s*fattoush\b/i, /\btribez\b/i,
+    /\bfattoush\b/i, /\bportlands\b/i, /\bmcgorums\b/i,
+    /\banmol\s*sweet\b/i, /\btortilla\b/i,
+    /\bthe\s*barn\s*burger\b/i, /\bthe\s*barn\s*burge\b/i,
+    /\btoddington\s*north\s*pret\b/i,
+    /\bcoyote\s*ugly\b/i,
     // London/broader
     /\bgiggling\s*squid\b/i, /\bthai\s*express\b/i, /\bnovikov\b/i,
     /\bsushisamba\b/i, /\bkabul\s*darbar\b/i, /\bhide\s*restaurant\b/i,
@@ -71,6 +91,8 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bsentry\b/i, /\bdatadog\b/i, /\bahrefs\b/i, /\bsemrush\b/i,
     /xero|quickbooks|slack|notion|linear|figma|github|gitlab|atlassian|jira|hubspot|salesforce|zendesk|mailchimp|google\s*workspace|microsoft\s*365|office\s*365|dropbox|vercel|netlify|heroku|aws\s/i,
     /\bwhop\b/i, /\bexposcale\b/i, /\btoolsuite\b/i,
+    /\bgodaddy\b/i, /\b01\.ai\b/i, /\bppt\.ai\b/i,
+    /\bwww\.capital\s*ontap\b/i,
     /\b(?:website|web\s*host|domain|hosting)\b/i,
     /\b(?:software|saas)\b/i,
   ],
@@ -82,7 +104,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bnetflix\b/i, /\bdisney\b\+?\b/i,
     /\byoutube\s*(premium|music)\b/i,
     /\bgoogle\s*one\b/i,
-    /\bpreschool\b/i, /\bkeyivr\b/i, /\bbemorefit\b/i,
+    /\bpreschool\b/i, /\bbemorefit\b/i,
   ],
   "car-expenses": [
     // Car brands
@@ -94,6 +116,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /tesco\s*pfs\b/i,
     /asda\s*petrol/i, /asda\s*pfs\b/i,
     /\bmfg\b/i,
+    /\bcostco\s*pfs\b/i,
     /sainsbury.*petrol/i,
     /\bapplegreen\b/i,
     /\besso\b/i, /\bmurco\b/i, /\brontec\b/i,
@@ -103,6 +126,10 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\blittleover\b/i,
     /\bpetrol\b/i, /\bfuel\b/i, /\bdiesel\b/i,
     /\bfilling\s*(?:station|stn)\b/i,
+    /\bglisteningpro\b/i, /\bf1\s*provaleting\b/i,
+    /\bsq\s*\*f1pro\b/i,    // backstop in case the SQ prefix wasn't stripped
+    // Vehicle tests / authorities
+    /\bdvsa\s*theory/i, /\bdvsa\b/i,
     // Parking
     /\bpaybyphone\b/i, /\bringgo\b/i,
     /\bncp\b/i, /\bq-park\b/i, /\bq\s*park\b/i,
@@ -190,15 +217,18 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bcouncil\s*park\b/i,
     // Tax/debt collectors
     /\bbristow\s*(?:and|&)\s*sutor\b/i,
-    /\bcompanies\s*house\b/i,
+    /\bcompanies\s*house\b/i, /\bcompanieshouse\b/i,
     /\bland\s*registry\b/i,
     /\bico\.org\b/i,
+    /\bkeyivr\b/i, /\bbarnet\.keyivr/i,    // Council IVR payment portal
+    /\blcc\s*npu\b/i, /\bwww\.paynotice\b/i,
   ],
   "director-loans": [
     /director.?loan|dla|dlj/i,
     /\brefun\s*dir\s*loan\b/i,
-    /\bdirectors?\s*(?:loan|repayment|payment)\b/i,
+    /\bdirectors?\s*(?:loan|repayment|payment|refund)\b/i,
     /\bdl\s*(?:account|loan)\b/i,
+    /\bdirector\s*refund\b/i,
   ],
   loans: [
     /loan repayment|bank loan|business loan|bounce back loan|cbils|capify|\bloan\b|funding circle|iwoca|capital on tap|\bfinance\s*(?:company|plc|ltd|house|group|solution)\b/i,
@@ -230,6 +260,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\binsurance\b/i,
     /public liability|professional indemnity/i,
     /\b(?:simply\s*business|hiscox|axa|aviva|churchill|direct\s*line|zurich|premium\s*credit|vitality\s*health|admiral|veygo|zenith|allianz|lv=|more\s*than|saga|tesco\s*bank|m&s\s*bank|nationwide|halifax|lloyds|barclays|natwest|hsbc)\s*(?:insurance|assurance|life|health|car|home|motor|van|fleet)?\b/i,
+    /\bveygo\b/i, /\badmiral\s*insurance\b/i,
   ],
   marketing: [
     /google ads|facebook ads|instagram ads|linkedin ads|advertising|marketing|sponsored|ad campaign/i,
@@ -259,6 +290,13 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\b(?:motorway|lodge)\s*services?\b/i,
     /\btoddington\b(?!\s*(?:north|south|east|west|road|street|lane))/i,
     /\bservices?\s*(?:station|stop|area)\b/i,
+    /\bmilford\s*service/i,             // Milford Services (M1 motorway)
+    /\bservice\s*stn?\b/i,              // "SERVICE ST" / "SERVICE STN" common shorthand
+    /\briverside\s*west\s*car/i,        // car park / travel — kept here for backstop
+    /\b(?:strand\s*palace|premier|travelodge|britannia|leonardo)\b.*\bhtl\b/i,
+    /\bleonardo\s*htl\b/i,
+    // Tolls
+    /\bm6toll\b|\bm6\s*toll\b/i,
     // Booking sites
     /\bbooking\.com\b/i, /\bexpedia\b/i, /\btrivago\b/i,
     // Taxi/ride
@@ -281,10 +319,18 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bucheck\b/i,
   ],
   supplies: [
-    // Supermarkets
+    // Supermarkets / convenience stores
     /tesco|sainsbury|asda|morrisons|aldi|lidl|waitrose|ocado|co-op|supermarket|grocer/i,
+    /\bselect\s*convenience\b/i, /\bcastros?\s*convenience\b/i,
+    /\banna\s*supermarket\b/i, /\bhighgate\s*plus\b/i, /\bsam\s*mart\b/i,
+    /\bhotvillle?\b/i, /\bhot\s*ville\b/i,
+    /\bwelford\s*ironmongers\b/i,
+    // E-commerce wrappers
+    /\bamazon\b/i,
+    /\bwww\.use\.ai/i,
     // Home/garden
-    /b&q|wickes|screwfix|toolstation|homebase|ikea|currys|argos|dunelm/i,
+    /b&q|\bb\s*&\s*q\b|wickes|screwfix|toolstation|homebase|ikea|currys|argos|dunelm/i,
+    /\bpoundstretcher\b/i, /\bnext\b\s+(?:retail|store)?\s*\d*\s+[A-Za-z]+\s+GB/i,
     // General retail
     /amazon|marks?\s*(?:&|and)\s*spencer|john\s*lewis|debenhams|boots\b|superdrug|wilko|poundland|home\s*bargains|b&m\b/i,
     // Furniture/furnishings
@@ -296,9 +342,9 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     // Department stores
     /\bprimark\b/i, /\btk\s*maxx\b/i, /\bselfridges\b/i, /\buniqlo\b/i,
     // Misc retail
-    /\btimpson\b/i, /\bb&m\b/i,
+    /\btimpson\b/i, /\bb&m\b/i, /\bapple\s*store\b/i,
     /\b(?:clothing|fashion|apparel)\b/i,
-    // Costco (wholesale but retail-like)
+    // Costco supermarket purchases (NOT fuel — Costco PFS routes to car-expenses below)
     /\bcostco\b(?!\s*(?:pfs|petrol|fuel))\b/i,
     // Pharmacy
     /\b(?:pharmacy|chemist|e-surgery|esurgery)\b/i,
@@ -308,6 +354,11 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
   "property-income": [
     /rent.*income|property.*income|accommodation.*income|housing.*benefit/i,
     /\b(?:rental|letting)\s*income\b/i,
+    // Tenant pays via mobile transfer with a property address in the description.
+    // Match house-number + street-name + UK road-type suffix.
+    /\b\d{1,4}[a-z]?\s+[A-Za-z]+\s+(?:road|street|drive|avenue|lane|crescent|close|rd|dr|ave|ln|cres|crs|gardens|gdns|terrace|grove|mews|parade)\b/i,
+    // Explicit rent token (only as last-resort fallback before uncategorized)
+    /\brent(?:al)?\b/i,
   ],
   "one-off": [],
   "uncategorized": [/./],

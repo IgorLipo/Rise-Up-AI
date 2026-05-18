@@ -232,7 +232,7 @@ export function ForecastTab(props: ForecastTabProps) {
               </span>
             </div>
             <div className="border-t border-zinc-100 pt-2 mt-1 flex justify-between text-sm">
-              <span className="text-zinc-700 font-semibold">Predicted month-end balance</span>
+              <span className="text-zinc-700 font-semibold">Recurring-only projected balance</span>
               <span className={`font-mono font-bold tabular-nums ${
                 forecast.calculationAudit.predictedBalance >= 0 ? "text-emerald-600" : "text-red-500"
               }`}>

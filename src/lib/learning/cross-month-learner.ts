@@ -164,10 +164,15 @@ export function learnFromHistory(
   const suspiciousCandidates: VendorLearning[] = [];
 
   for (const vendor of vendorMap.values()) {
-    // Only found once = genuine one-off. Force subcategory.
+    // Only found once = genuine one-off — but only OVERRIDE subcategory if it
+    // wasn't already classified meaningfully by the keyword classifier.
+    // This preserves single-occurrence categorizations (e.g. one rent payment
+    // that matched the property-income heuristic) instead of dropping them.
     if (vendor.appearanceCount < 2) {
-      vendor.subcategory = "one-off";
-      vendor.category = "Uncategorized";
+      if (vendor.subcategory === "uncategorized") {
+        vendor.subcategory = "one-off";
+        vendor.category = "Uncategorized";
+      }
       oneOffCandidates.push(vendor.canonicalName);
       if (vendor.direction === "income") {
         oneOffIncomeCandidates.push(vendor.canonicalName);
@@ -179,11 +184,18 @@ export function learnFromHistory(
       continue;
     }
 
-    // 2+ occurrences but still uncategorized — keep as uncategorized for review,
-    // NOT one-off. One-off means literally appeared only once.
-    if (vendor.subcategory === "uncategorized" && vendor.direction === "expense") {
-      vendor.subcategory = "uncategorized";
-      vendor.category = "Uncategorized";
+    // 2+ occurrences but still uncategorized — promote to a sensible default
+    // based on direction. Income recurring with no keyword match is almost
+    // always tenant rent (this is a property-management business). Expense
+    // recurring stays uncategorized for human review.
+    if (vendor.subcategory === "uncategorized") {
+      if (vendor.direction === "income") {
+        vendor.subcategory = "property-income";
+        vendor.category = "Other Income";
+      } else {
+        vendor.subcategory = "uncategorized";
+        vendor.category = "Uncategorized";
+      }
     }
 
     // Multiple appearances across months → recurring

@@ -292,10 +292,10 @@ function DashboardContent() {
       .then((json) => {
         if (json.hasData) {
           setData(json);
-        } else if (dateRange.preset !== "all") {
-          // If filtering returned no data, keep previous data but show a note
-          setData(null);
         }
+        // If a date filter returns no data, keep the existing `data` in memory
+        // (don't drop to empty state) so the user can simply reset the filter
+        // without losing context.
         setLoading(false);
       })
       .catch((err) => {
@@ -371,7 +371,7 @@ function DashboardContent() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DateRangeSelector value={dateRange} onChange={setDateRange} />
           <button
             onClick={handleRecalculate}
