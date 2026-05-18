@@ -86,7 +86,7 @@ export function learnFromHistory(
     if (!core || core.length < 2) continue;
 
     if (!vendorMap.has(core)) {
-      const classification = classifySubcategory(normalized);
+      const classification = classifySubcategory(normalized, tx.type);
       vendorMap.set(core, {
         canonicalName: core,
         aliases: [tx.description],
@@ -115,7 +115,7 @@ export function learnFromHistory(
       // One-off may have been set by a previous run (stale DB state) — a vendor with
       // 2+ occurrences is NOT a one-off, so give the classifier another chance.
       if (v.subcategory === "uncategorized" || v.subcategory === "one-off") {
-        const classification = classifySubcategory(normalized);
+        const classification = classifySubcategory(normalized, tx.type);
         if (classification.subcategory !== "uncategorized" && classification.subcategory !== "one-off") {
           v.subcategory = classification.subcategory;
           v.category = classification.category;

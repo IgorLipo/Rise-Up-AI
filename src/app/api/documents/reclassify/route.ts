@@ -55,7 +55,7 @@ export async function POST() {
     let docChanged = false;
     const newTx: Transaction[] = stmt.transactions.map((tx) => {
       totalTx++;
-      const result = classifySubcategory(tx.description);
+      const result = classifySubcategory(tx.description, tx.type);
       // Don't overwrite user corrections — they have a separate marker.
       if ((tx as Transaction & { userCorrected?: boolean }).userCorrected) {
         return tx;

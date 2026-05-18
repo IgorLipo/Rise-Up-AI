@@ -512,13 +512,35 @@ async function computeAggregate(
     );
   }
 
+  // Collect this month's actual transactions so the daily forecast can show
+  // real activity for past days alongside projections for future days.
+  const todayStrForForecast = new Date().toISOString().split("T")[0];
+  const currentMonth = todayStrForForecast.slice(0, 7);
+  const actualThisMonth = workingTransactions
+    .filter((tx) => tx.date.slice(0, 7) === currentMonth)
+    .map((tx) => ({
+      date: tx.date,
+      description: tx.description,
+      amount: tx.amount,
+      type: tx.type,
+      subcategory: tx.subcategory ?? undefined,
+    }));
+
   let forecast = forecastStartingBalance != null
-    ? generateForecast(displayPatterns, forecastStartingBalance)
+    ? generateForecast(
+        displayPatterns,
+        forecastStartingBalance,
+        todayStrForForecast,
+        actualThisMonth
+      )
     : null;
   let forecastError: string | null = null;
 
   if (forecast && currentPosition.balance != null) {
-    const validation = validateDailyForecast(forecast, currentPosition.balance);
+    // Validator wants the balance at the START of the forecast window. The
+    // full-month forecast starts at month-1st, not at currentBalance.
+    const startBal = forecast.dailyForecast[0]?.openingBalance ?? currentPosition.balance;
+    const validation = validateDailyForecast(forecast, startBal);
     if (!validation.valid) {
       console.error("[aggregate] Forecast validation failed:", validation.errors);
       forecastError = `Forecast math error: ${validation.errors.length} check(s) failed.`;
@@ -590,10 +612,39 @@ async function computeAggregate(
     if (seenMonthlyPeriods.has(periodKey)) continue;
     seenMonthlyPeriods.add(periodKey);
 
+    // Bucket each statement by the month it COVERS, not the period-end month.
+    // Most UK statements run roughly 1st → 1st-of-next-month, so period_end can
+    // fall on the first day of the *following* month. Using period_end as the
+    // bucket key caused two statements (e.g. the September statement ending
+    // Oct 1 and the October statement ending Oct 31) to merge into one row,
+    // making it look like other months were missing.
+    // We use whichever endpoint of the period lies furthest from the calendar
+    // boundary — i.e. the "middle" of the period — as the canonical month.
     const periodEnd = row.statement_period_end;
-    const month = periodEnd.slice(0, 7); // YYYY-MM of statement end date
+    const periodStart = row.statement_period_start;
+    const startMonth = periodStart.slice(0, 7);
+    const endMonth = periodEnd.slice(0, 7);
+    let month: string;
+    if (startMonth === endMonth) {
+      month = startMonth;
+    } else {
+      // Cross-month statement: use the month containing the larger share of
+      // days. A statement period_start=2025-06-01, period_end=2025-07-01 covers
+      // 30 days of June and 1 day of July → bucket as 2025-06.
+      const startDate = new Date(periodStart + "T00:00:00Z");
+      const endDate = new Date(periodEnd + "T00:00:00Z");
+      const totalDays =
+        (endDate.getTime() - startDate.getTime()) / 86400000 + 1;
+      const lastDayOfStartMonth = new Date(
+        Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 0)
+      );
+      const daysInStartMonth =
+        (lastDayOfStartMonth.getTime() - startDate.getTime()) / 86400000 + 1;
+      month =
+        daysInStartMonth / totalDays >= 0.5 ? startMonth : endMonth;
+    }
 
-    const label = new Date(periodEnd + "T00:00:00").toLocaleDateString("en-GB", {
+    const label = new Date(month + "-15T00:00:00Z").toLocaleDateString("en-GB", {
       year: "numeric",
       month: "long",
     });
@@ -635,12 +686,15 @@ async function computeAggregate(
   // month-end projection in the UI.
   let historicalForecast: HistoricalForecast | null = null;
   if (latestClosingBalance != null && latestPeriodTo) {
+    // Use ALL complete historical months (passing Infinity means "no cap").
+    // For this user's data (11 months) the avg-monthly figure is more stable
+    // and the user explicitly asked for full-history rather than trailing 3.
     historicalForecast = computeHistoricalForecast(
       monthlySummaries,
       latestClosingBalance,
       latestPeriodTo,
       undefined,
-      3
+      Number.POSITIVE_INFINITY
     );
   }
 
@@ -651,7 +705,7 @@ async function computeAggregate(
     const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
     const storedSubcategory = tx.subcategory && tx.subcategory !== "uncategorized" ? tx.subcategory : null;
-    const subcategory = vendor?.subcategory ?? storedSubcategory ?? classifySubcategory(tx.description).subcategory;
+    const subcategory = vendor?.subcategory ?? storedSubcategory ?? classifySubcategory(tx.description, tx.type).subcategory;
     if (!categoryMap.has(subcategory)) {
       categoryMap.set(subcategory, { total: 0, count: 0, transactions: [] });
     }

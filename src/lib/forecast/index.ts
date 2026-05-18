@@ -282,14 +282,22 @@ function formatDate(d: Date): string {
 export function generateForecast(
   patterns: EnrichedDetectedPatterns,
   currentBalance: number,
-  today?: string
+  today?: string,
+  actualThisMonth?: Array<{
+    date: string;
+    description: string;
+    amount: number;
+    type: "credit" | "debit";
+    subcategory?: string;
+  }>
 ): MonthEndForecast {
   const todayStr = today ?? new Date().toISOString().split("T")[0];
   const monthEnd = getMonthEnd(todayStr);
 
-  // isMonthComplete: deferred to Phase 1b — computed in aggregate route based on statement coverage
-
-  const daily = generateDailyForecast(patterns, currentBalance, todayStr);
+  // Full-month daily forecast: actuals for past days, projections for future.
+  const daily = generateDailyForecast(patterns, currentBalance, todayStr, {
+    actualThisMonth,
+  });
 
   // Filter to HIGH confidence only for main forecast
   const highConfidenceIncome = patterns.recurringIncome

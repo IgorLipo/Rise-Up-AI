@@ -8,11 +8,26 @@ import type { DailyForecast } from "@/lib/forecast";
 function DailyForecastRow({ day }: { day: DailyForecast }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Combine HIGH and MEDIUM confidence transactions, sort by amount descending
-  const combined = [...day.transactions, ...day.possibleUpcoming]
-    .sort((a, b) => Math.abs(b.expectedAmount) - Math.abs(a.expectedAmount));
-  const topItems = combined.slice(0, 5);
-  const remaining = combined.length - 5;
+  // Combine HIGH and MEDIUM confidence transactions, then INTERLEAVE income
+  // and expense items so both directions are visible in the visible-5 slice.
+  // (Previous version sorted by magnitude descending which buried whichever
+  // direction had smaller items, hiding all expenses behind income on rent
+  // days.)
+  const incomeItems = [...day.transactions, ...day.possibleUpcoming]
+    .filter((t) => t.category === "Income")
+    .sort((a, b) => b.expectedAmount - a.expectedAmount);
+  const expenseItems = [...day.transactions, ...day.possibleUpcoming]
+    .filter((t) => t.category !== "Income")
+    .sort((a, b) => b.expectedAmount - a.expectedAmount);
+
+  const combined: typeof incomeItems = [];
+  const maxLen = Math.max(incomeItems.length, expenseItems.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (incomeItems[i]) combined.push(incomeItems[i]);
+    if (expenseItems[i]) combined.push(expenseItems[i]);
+  }
+  const topItems = combined.slice(0, 6);
+  const remaining = combined.length - 6;
 
   return (
     <div className="border border-zinc-200 rounded-lg overflow-hidden">
@@ -51,8 +66,8 @@ function DailyForecastRow({ day }: { day: DailyForecast }) {
               <span className="text-xs text-zinc-700 truncate capitalize">{item.merchant}</span>
               <span className="text-[10px] text-zinc-400 capitalize">{item.subcategory}</span>
             </div>
-            <span className={`text-xs font-mono ml-2 flex-shrink-0 ${item.expectedAmount > 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {item.expectedAmount > 0 ? "+" : ""}{formatCurrency(item.expectedAmount)}
+            <span className={`text-xs font-mono ml-2 flex-shrink-0 ${item.category === "Income" ? "text-emerald-600" : "text-red-500"}`}>
+              {item.category === "Income" ? "+" : "-"}{formatCurrency(item.expectedAmount)}
             </span>
           </div>
         ))}

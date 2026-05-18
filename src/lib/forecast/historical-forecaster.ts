@@ -70,7 +70,7 @@ export function computeHistoricalForecast(
   currentBalance: number,
   asOfDate: string,
   today: string = new Date().toISOString().split("T")[0],
-  monthsToAvg: number = 3
+  monthsToAvg: number = Number.POSITIVE_INFINITY
 ): HistoricalForecast | null {
   // Use only "complete" months — partial coverage skews averages.
   const complete = monthlySummaries.filter(
@@ -80,7 +80,9 @@ export function computeHistoricalForecast(
 
   // Sort ascending (oldest first) so we take the most recent N from the end.
   const sorted = [...complete].sort((a, b) => a.month.localeCompare(b.month));
-  const n = Math.min(monthsToAvg, sorted.length);
+  const n = Number.isFinite(monthsToAvg)
+    ? Math.min(monthsToAvg, sorted.length)
+    : sorted.length;
   const window = sorted.slice(-n);
 
   const avgIncome = window.reduce((s, m) => s + m.totalIncome, 0) / window.length;
@@ -131,7 +133,7 @@ export function computeHistoricalForecast(
     avgMonthlyExpenses: avgExpenses,
     avgMonthlyNet: avgNet,
     confidence,
-    method: `Trailing ${window.length}-month average`,
+    method: `Average of ${window.length} complete months`,
     asOfDate,
     monthEndDate: monthEnd,
   };
