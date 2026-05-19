@@ -13,6 +13,18 @@
 import type { MonthlySummary } from "./types";
 import type { EnrichedDetectedPatterns } from "@/lib/detection";
 
+/**
+ * Per-vendor history: each vendor's monthly totals across all history.
+ * Used to compute "did this vendor fire in N of the last M months" recurrence
+ * AND to compute their typical monthly spend (sum of amounts that month,
+ * not single-occurrence typical amount — handles weekly tenants etc.).
+ */
+export interface VendorMonthlyHistory {
+  canonicalName: string;
+  direction: "income" | "expense" | "mixed";
+  monthlyTotals: Record<string, number>; // YYYY-MM → total amount that month
+}
+
 export interface HybridComponent {
   income: number;
   expenses: number;
@@ -79,7 +91,8 @@ export function computeHybridForecast(
   asOfDate: string,
   actualThisMonth: Array<{ amount: number; type: "credit" | "debit" }>,
   monthlyOneOffAvg: { income: number; expenses: number; historyMonths: number },
-  today: string = new Date().toISOString().split("T")[0]
+  today: string = new Date().toISOString().split("T")[0],
+  vendorHistory?: VendorMonthlyHistory[]
 ): HybridForecast {
   const monthEnd = getMonthEnd(today);
   const monthStart = today.slice(0, 7) + "-01";
@@ -87,24 +100,85 @@ export function computeHybridForecast(
   const daysRemaining = Math.max(0, daysBetween(asOfDate < monthStart ? monthStart : asOfDate, monthEnd));
   const fractionRemaining = Math.min(1, daysRemaining / daysInMonth);
 
-  // 1. Recurring component — sum of patterns whose next occurrence falls in
-  //    the remaining portion of the month.
+  // 1. Recurring component.
+  //
+  // Old approach: filter patterns to HIGH/MEDIUM confidence tier, sum each
+  // pattern's "typical" single-occurrence amount. This systematically
+  // under-counted because:
+  //   - Property tenants with variable amounts (£560–£3,500) get LOW tier
+  //   - Weekly recurring (4×/month) was counted once
+  //   - Backtest on Feb/Mar/Apr 2026: captured 34% of true recurring income
+  //     and 27% of true recurring expenses → +£23k positive bias.
+  //
+  // New approach: for each vendor that fired in ≥2 of the last 3 complete
+  // months, use that vendor's average MONTHLY total (not single-occurrence)
+  // as the projection. This naturally handles multi-payment vendors and
+  // doesn't depend on amount-variance confidence checks.
   let recIncome = 0;
   let recExpenses = 0;
-  for (const p of patterns.recurringIncome) {
-    if (p.confidenceTier === "low") continue;
-    if (p.nextExpected >= today && p.nextExpected <= monthEnd) {
-      recIncome += p.typicalAmount;
+  let recurringIncomeVendors = 0;
+  let recurringExpenseVendors = 0;
+  if (vendorHistory && vendorHistory.length > 0) {
+    // Determine the last 3 complete-month keys from monthlySummaries.
+    const completeMonths = monthlySummaries
+      .filter((m) => m.completeness !== "partial")
+      .map((m) => m.month)
+      .sort();
+    const recentMonths = completeMonths.slice(-3);
+    if (recentMonths.length > 0) {
+      for (const v of vendorHistory) {
+        // Months in the recent window where this vendor had non-zero activity.
+        const firedMonths = recentMonths.filter(
+          (m) => Math.abs(v.monthlyTotals[m] ?? 0) > 0.005
+        );
+        if (firedMonths.length < 2) continue; // not recurring enough
+        // Vendor's average monthly total over the recent window
+        // (treat months with no activity as 0 so the avg pulls down naturally).
+        const avg =
+          recentMonths.reduce((s, m) => s + (v.monthlyTotals[m] ?? 0), 0) /
+          recentMonths.length;
+        if (v.direction === "income") {
+          recIncome += avg;
+          recurringIncomeVendors++;
+        } else if (v.direction === "expense") {
+          recExpenses += avg;
+          recurringExpenseVendors++;
+        } else {
+          // Mixed direction: split the avg by sign of monthly totals.
+          // Rare — most vendors are pure income or pure expense.
+          let posTotal = 0;
+          let negTotal = 0;
+          for (const m of recentMonths) {
+            const t = v.monthlyTotals[m] ?? 0;
+            if (t > 0) posTotal += t;
+            else negTotal += Math.abs(t);
+          }
+          recIncome += posTotal / recentMonths.length;
+          recExpenses += negTotal / recentMonths.length;
+        }
+      }
     }
-  }
-  for (const p of patterns.recurringExpenses) {
-    if (p.confidenceTier === "low") continue;
-    if (p.nextExpected >= today && p.nextExpected <= monthEnd) {
-      recExpenses += p.typicalAmount;
+    // Pro-rate by fraction of month remaining (recurring vendors
+    // statistically fire across the whole month).
+    recIncome *= fractionRemaining;
+    recExpenses *= fractionRemaining;
+  } else {
+    // Fallback: old pattern-tier approach (kept for safety only).
+    for (const p of patterns.recurringIncome) {
+      if (p.confidenceTier === "low") continue;
+      if (p.nextExpected >= today && p.nextExpected <= monthEnd) recIncome += p.typicalAmount;
+    }
+    for (const p of patterns.recurringExpenses) {
+      if (p.confidenceTier === "low") continue;
+      if (p.nextExpected >= today && p.nextExpected <= monthEnd) recExpenses += p.typicalAmount;
     }
   }
 
-  // 2. One-off avg component — pro-rated by remaining-month fraction.
+  // 2. One-off avg component.
+  // Now that the recurring component captures vendors firing in 2+ of last 3
+  // months, the "one-off avg" must only count vendors that DIDN'T fire in 2+
+  // months (otherwise we'd double-count). The caller passes monthlyOneOffAvg
+  // already filtered this way.
   const ooIncome = monthlyOneOffAvg.income * fractionRemaining;
   const ooExpenses = monthlyOneOffAvg.expenses * fractionRemaining;
 

@@ -697,6 +697,62 @@ async function computeAggregate(
       undefined,
       3
     );
+    // Build per-vendor monthly-total history for the hybrid forecaster's
+    // "fired in ≥2 of last 3 months" rule.
+    const vendorHistory: Array<{
+      canonicalName: string;
+      direction: "income" | "expense" | "mixed";
+      monthlyTotals: Record<string, number>;
+    }> = [];
+    for (const v of learningReport.vendors.values()) {
+      const monthly: Record<string, number> = {};
+      for (let i = 0; i < v.dates.length; i++) {
+        const m = v.dates[i].slice(0, 7);
+        const isIncome = (v.incomeAmounts.length > 0)
+          && i < v.incomeAmounts.length
+          && v.incomeAmounts.includes(v.amounts[i]);
+        // For mixed-direction vendors, split per the original tx sign.
+        // For pure income / expense, all amounts go to that direction.
+        const signed = v.direction === "expense" ? -v.amounts[i]
+          : v.direction === "income" ? v.amounts[i]
+          : (isIncome ? v.amounts[i] : -v.amounts[i]);
+        monthly[m] = (monthly[m] ?? 0) + signed;
+      }
+      vendorHistory.push({
+        canonicalName: v.canonicalName,
+        direction: v.direction,
+        monthlyTotals: monthly,
+      });
+    }
+
+    // Recompute oneOffAvg to EXCLUDE vendors that fired in ≥2 of last 3
+    // months (those are now counted in the recurring component instead —
+    // double-counting fix).
+    const completeMonths = monthlySummaries
+      .filter((m) => m.completeness !== "partial")
+      .map((m) => m.month)
+      .sort();
+    const recentMonths = completeMonths.slice(-3);
+    let oneOffIncomeSum = 0;
+    let oneOffExpenseSum = 0;
+    let oneOffMonthsCount = 0;
+    for (const m of recentMonths) {
+      oneOffMonthsCount++;
+      for (const v of vendorHistory) {
+        const firedInRecent = recentMonths.filter(
+          (mm) => Math.abs(v.monthlyTotals[mm] ?? 0) > 0.005
+        ).length;
+        if (firedInRecent >= 2) continue; // already in recurring component
+        const amt = v.monthlyTotals[m] ?? 0;
+        if (amt > 0) oneOffIncomeSum += amt;
+        else oneOffExpenseSum += Math.abs(amt);
+      }
+    }
+    const oneOffIncomeRecentAvg =
+      oneOffMonthsCount > 0 ? oneOffIncomeSum / oneOffMonthsCount : 0;
+    const oneOffExpenseRecentAvg =
+      oneOffMonthsCount > 0 ? oneOffExpenseSum / oneOffMonthsCount : 0;
+
     hybridForecast = computeHybridForecast(
       displayPatterns,
       monthlySummaries,
@@ -704,10 +760,12 @@ async function computeAggregate(
       latestPeriodTo,
       actualThisMonth.map((tx) => ({ amount: tx.amount, type: tx.type })),
       {
-        income: learningReport.monthlyOneOffIncomeAvg,
-        expenses: learningReport.monthlyOneOffExpenseAvg,
-        historyMonths: learningReport.totalMonths,
-      }
+        income: oneOffIncomeRecentAvg,
+        expenses: oneOffExpenseRecentAvg,
+        historyMonths: oneOffMonthsCount,
+      },
+      undefined,
+      vendorHistory
     );
   }
 
