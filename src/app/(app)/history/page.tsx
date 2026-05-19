@@ -102,6 +102,48 @@ export default function HistoryPage() {
         </button>
       </div>
 
+      {/* Aggregate roll-ups: last 3 / last 6 / all-time. */}
+      {monthly.length > 0 && (() => {
+        // monthly is sorted newest-first; "last N" = first N entries.
+        const slices: Array<{ label: string; rows: MonthlyGroup[] }> = [
+          { label: "Last 3 months", rows: monthly.slice(0, 3) },
+          { label: "Last 6 months", rows: monthly.slice(0, 6) },
+          { label: `All ${monthly.length} months`, rows: monthly },
+        ];
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {slices.map((s) => {
+              const inc = s.rows.reduce((acc, m) => acc + m.totalIncome, 0);
+              const exp = s.rows.reduce((acc, m) => acc + m.totalExpenses, 0);
+              const net = inc - exp;
+              const n = s.rows.length;
+              return (
+                <div key={s.label} className="bg-white border border-zinc-200 rounded-xl p-4">
+                  <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">{s.label}</div>
+                  <div className={`text-xl font-bold tabular-nums mt-1 ${net >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                    {net >= 0 ? "+" : ""}{formatCurrency(net)}
+                  </div>
+                  <div className="mt-2 space-y-0.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500">Income</span>
+                      <span className="font-mono text-emerald-700">+{formatCurrency(inc)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500">Expenses</span>
+                      <span className="font-mono text-red-600">-{formatCurrency(exp)}</span>
+                    </div>
+                    <div className="flex justify-between text-zinc-400">
+                      <span>Avg/month</span>
+                      <span className="font-mono">{n > 0 ? formatCurrency(net / n) : "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {monthly.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <p className="text-sm text-zinc-500 mb-4">No statements uploaded yet.</p>
@@ -188,7 +230,7 @@ export default function HistoryPage() {
                             <div className="text-xs font-medium text-zinc-700">{stmt.period}</div>
                             <div className="text-xs text-zinc-400 mt-0.5">
                               {stmt.transactionCount} transactions
-                              {stmt.closingBalance > 0 ? ` · closing ${formatCurrency(stmt.closingBalance)}` : ""}
+                              {stmt.closingBalance != null ? ` · closing ${formatCurrency(stmt.closingBalance)}` : ""}
                             </div>
                           </div>
                           <button

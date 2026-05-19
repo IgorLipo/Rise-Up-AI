@@ -26,8 +26,12 @@ const SUBCATEGORIES: Array<{ value: Subcategory | "all" | "suspicious"; label: s
   { value: "director-loans", label: "Director loans" },
   { value: "property-management", label: "Property" },
   { value: "professional-services", label: "Services" },
+  { value: "food-dining", label: "Food & dining" },
+  { value: "travel", label: "Travel" },
+  { value: "marketing", label: "Marketing" },
+  { value: "office-supplies", label: "Office supplies" },
+  { value: "property-income", label: "Rent income" },
   { value: "one-off", label: "One-off" },
-  { value: "uncategorized", label: "Uncategorized" },
   { value: "suspicious", label: "Flagged" },
 ];
 
@@ -174,6 +178,13 @@ function TransactionsPageInner() {
         const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
         return suspiciousMap.has(key);
       });
+    } else if (filter === "one-off") {
+      // One-off = vendor appeared exactly once across all uploaded history.
+      result = result.filter((tx) => {
+        const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+        const vendor = vendorMap.get(key);
+        return !vendor || vendor.appearanceCount <= 1;
+      });
     } else if (filter !== "all") {
       result = result.filter((tx) => resolveSubcategory(tx) === filter);
     }
@@ -194,12 +205,16 @@ function TransactionsPageInner() {
     return result;
   }, [transactions, filter, vendorMap, suspiciousMap, search, monthParam]);
 
+  // When a specific category is selected, show ALL matching transactions —
+  // the user asked for full visibility, not pagination, inside a chosen
+  // bucket. Pagination only applies to the "All" view.
+  const effectivePageSize = filter === "all" ? pageSize : filtered.length || pageSize;
   const paginated = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page, pageSize]);
+    const start = (page - 1) * effectivePageSize;
+    return filtered.slice(start, start + effectivePageSize);
+  }, [filtered, page, effectivePageSize]);
 
-  const totalPages = Math.ceil(filtered.length / pageSize);
+  const totalPages = Math.ceil(filtered.length / effectivePageSize);
 
   // Reset page when filter or search changes
   useEffect(() => {
@@ -329,22 +344,65 @@ function TransactionsPageInner() {
         </select>
       </div>
 
-      {/* Filter pills */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {SUBCATEGORIES.map((s) => (
-          <button
-            key={s.value}
-            onClick={() => setFilter(s.value)}
-            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              filter === s.value
-                ? "bg-zinc-900 text-white"
-                : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {/* Filter pills — counts computed against the (month-filtered) dataset;
+          chips with zero matches are hidden. Wraps to multiple rows on narrow
+          viewports instead of horizontal scroll. */}
+      {(() => {
+        // Build counts once per render.
+        const counts = new Map<string, number>();
+        const monthFiltered = monthParam
+          ? transactions.filter((tx) => tx.date.startsWith(monthParam))
+          : transactions;
+        for (const tx of monthFiltered) {
+          const sub = resolveSubcategory(tx);
+          counts.set(sub, (counts.get(sub) ?? 0) + 1);
+        }
+        // One-off count: vendors with appearanceCount <= 1.
+        let oneOffCount = 0;
+        for (const tx of monthFiltered) {
+          const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+          const vendor = vendorMap.get(key);
+          if (!vendor || vendor.appearanceCount <= 1) oneOffCount++;
+        }
+        counts.set("one-off", oneOffCount);
+        const suspiciousCount = monthFiltered.filter((tx) => {
+          const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+          return suspiciousMap.has(key);
+        }).length;
+        counts.set("suspicious", suspiciousCount);
+
+        const visible = SUBCATEGORIES.filter(
+          (s) => s.value === "all" || (counts.get(s.value) ?? 0) > 0
+        );
+
+        return (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {visible.map((s) => {
+              const n = s.value === "all" ? monthFiltered.length : counts.get(s.value) ?? 0;
+              return (
+                <button
+                  key={s.value}
+                  onClick={() => setFilter(s.value)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    filter === s.value
+                      ? "bg-zinc-900 text-white"
+                      : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  {s.label}
+                  <span
+                    className={`ml-1.5 text-[10px] ${
+                      filter === s.value ? "text-zinc-300" : "text-zinc-400"
+                    }`}
+                  >
+                    {n}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Transaction list */}
       <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">

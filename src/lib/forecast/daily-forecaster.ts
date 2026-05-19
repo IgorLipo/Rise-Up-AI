@@ -146,23 +146,61 @@ export function generateDailyForecast(
     }
   }
 
-  // 2. Projected recurring patterns for FUTURE days (>= today).
-  for (const payment of patterns.recurringExpenses) {
-    if (payment.confidenceTier === "low") continue;
-    const next = payment.nextExpected;
-    if (next < today) continue;          // past — actuals cover it
-    if (next > monthEndStr) continue;    // outside this month
-    const sub = (payment as { subcategory?: string }).subcategory ?? "supplier-payments";
-    addToDay(next, buildTx(payment, "expense", sub), payment.confidenceTier === "medium");
+  // 2. Project recurring patterns across the WHOLE current month so that
+  //    past days without actual coverage (e.g. the statement period ended
+  //    before today) still show predictions. For each recurring pattern,
+  //    derive the day-of-month it typically lands on from its history and
+  //    place a projection on that date — unless an actual already sits there.
+  function placeRecurringAcrossMonth(
+    payment: RecurringPayment,
+    direction: "income" | "expense"
+  ) {
+    if (payment.confidenceTier === "low") return;
+    const sub = (payment as { subcategory?: string }).subcategory
+      ?? (direction === "income" ? "property-income" : "supplier-payments");
+
+    // Collect days-of-month from prior occurrences.
+    const dom = new Set<number>();
+    for (const o of payment.occurrences) {
+      const d = new Date(o.date + "T00:00:00Z").getUTCDate();
+      if (d >= 1 && d <= 31) dom.add(d);
+    }
+    // Fallback to the nextExpected day if we have no historical occurrences.
+    if (dom.size === 0) {
+      const d = new Date(payment.nextExpected + "T00:00:00Z").getUTCDate();
+      if (d >= 1 && d <= 31) dom.add(d);
+    }
+
+    // Place ONE projection per typical-DOM in this calendar month.
+    const placedThisMonth = new Set<string>();
+    for (const day of dom) {
+      const candidate = new Date(
+        Date.UTC(
+          new Date(today + "T00:00:00Z").getUTCFullYear(),
+          new Date(today + "T00:00:00Z").getUTCMonth(),
+          day
+        )
+      );
+      const candidateStr = formatDate(candidate);
+      // Skip if the day rolled into the wrong month (e.g. Feb 31).
+      if (candidateStr.slice(0, 7) !== today.slice(0, 7)) continue;
+      if (placedThisMonth.has(candidateStr)) continue;
+      placedThisMonth.add(candidateStr);
+
+      // Skip past days where an actual transaction from THIS vendor already
+      // exists (the actual is more accurate than the projection).
+      const dayActuals = actualsByDate.get(candidateStr) ?? [];
+      const merch = payment.merchant.toLowerCase();
+      const vendorAlreadyActual = dayActuals.some(
+        (t) => t.merchant.toLowerCase().includes(merch) || merch.includes(t.merchant.toLowerCase())
+      );
+      if (vendorAlreadyActual) continue;
+
+      addToDay(candidateStr, buildTx(payment, direction, sub), payment.confidenceTier === "medium");
+    }
   }
-  for (const income of patterns.recurringIncome) {
-    if (income.confidenceTier === "low") continue;
-    const next = income.nextExpected;
-    if (next < today) continue;
-    if (next > monthEndStr) continue;
-    const sub = (income as { subcategory?: string }).subcategory ?? "property-income";
-    addToDay(next, buildTx(income, "income", sub), income.confidenceTier === "medium");
-  }
+  for (const p of patterns.recurringExpenses) placeRecurringAcrossMonth(p, "expense");
+  for (const i of patterns.recurringIncome) placeRecurringAcrossMonth(i, "income");
 
   // 3. Determine the month-start balance.
   // If caller didn't pass one explicitly, walk backwards: subtract net of
@@ -189,11 +227,18 @@ export function generateDailyForecast(
     const dateStr = formatDate(d);
     const isPast = dateStr < today;
 
-    // Use actuals for past days; recurring estimates for future.
+    // Past days: prefer actuals; fall back to recurring projections so the
+    // user sees an expected pattern even when no statement covers that day.
+    // Future days: recurring projections only.
+    const actualsToday = actualsByDate.get(dateStr) ?? [];
+    const recurringHigh = perDay.get(dateStr) ?? [];
+    const recurringMed = possiblePerDay.get(dateStr) ?? [];
     const dayTxs = isPast
-      ? (actualsByDate.get(dateStr) ?? [])
-      : (perDay.get(dateStr) ?? []);
-    const possibleTxs = isPast ? [] : (possiblePerDay.get(dateStr) ?? []);
+      ? (actualsToday.length > 0 ? actualsToday : recurringHigh)
+      : recurringHigh;
+    const possibleTxs = isPast
+      ? (actualsToday.length > 0 ? [] : recurringMed)
+      : recurringMed;
 
     const highIncome = dayTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
     const highExpenses = dayTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
