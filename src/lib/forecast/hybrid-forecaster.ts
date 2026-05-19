@@ -1,0 +1,164 @@
+// Hybrid forecaster.
+//
+// Splits the forecast into TWO components and reconciles against the
+// purely-historical baseline:
+//
+//   1. Deterministic — sum of recurring patterns expected to hit this month.
+//   2. Stochastic    — monthly average of one-off transactions from history.
+//
+// The hybrid total = (1) + (2). We then compare this to the trailing-history
+// average net flow ("historical baseline"). If they agree within 20%, the
+// hybrid is high-confidence. If they disagree, surface a warning — usually
+// means recurring detection missed something.
+import type { MonthlySummary } from "./types";
+import type { EnrichedDetectedPatterns } from "@/lib/detection";
+
+export interface HybridComponent {
+  income: number;
+  expenses: number;
+  net: number;
+}
+
+export interface HybridForecast {
+  /** Sum of recurring-pattern projections for the current month. */
+  recurring: HybridComponent;
+  /** Monthly average of one-off transactions over historical months. */
+  oneOffAvg: HybridComponent;
+  /** Recurring + one-off avg, pro-rated by days remaining. */
+  totalProjected: HybridComponent;
+  /** Actuals from the in-progress month (statement data so far). */
+  actualSoFar: HybridComponent;
+  /** Month-end balance prediction using the hybrid total. */
+  predictedMonthEnd: number;
+  /** Confidence 0-1 based on agreement with historical baseline. */
+  confidence: number;
+  /** Variance percent between hybrid total net and historical avg net. */
+  variancePct: number;
+  /** Whether the methods disagree by >20% — shown as a warning. */
+  reconciliationWarning: boolean;
+  /** Diagnostic info. */
+  monthsUsed: number;
+  daysRemaining: number;
+  daysInMonth: number;
+  asOfDate: string;
+  monthEndDate: string;
+}
+
+function getMonthEnd(today: string): string {
+  const d = new Date(today + "T00:00:00Z");
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+  return end.toISOString().split("T")[0];
+}
+function getDaysInMonth(today: string): number {
+  const d = new Date(today + "T00:00:00Z");
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+}
+function daysBetween(d1: string, d2: string): number {
+  return Math.round(
+    (new Date(d2 + "T00:00:00Z").getTime() -
+      new Date(d1 + "T00:00:00Z").getTime()) /
+      86400000
+  );
+}
+
+/**
+ * Build a hybrid forecast.
+ *
+ * @param patterns           detected recurring patterns
+ * @param monthlySummaries   complete past months (used for one-off avg + historical avg cross-check)
+ * @param currentBalance     statement closing balance (starting point)
+ * @param asOfDate           statement period_end
+ * @param actualThisMonth    real transactions in current month so far
+ * @param monthlyOneOffAvg   { income, expenses } — typical one-off totals per month from learner
+ * @param today              today's date
+ */
+export function computeHybridForecast(
+  patterns: EnrichedDetectedPatterns,
+  monthlySummaries: MonthlySummary[],
+  currentBalance: number,
+  asOfDate: string,
+  actualThisMonth: Array<{ amount: number; type: "credit" | "debit" }>,
+  monthlyOneOffAvg: { income: number; expenses: number; historyMonths: number },
+  today: string = new Date().toISOString().split("T")[0]
+): HybridForecast {
+  const monthEnd = getMonthEnd(today);
+  const monthStart = today.slice(0, 7) + "-01";
+  const daysInMonth = getDaysInMonth(today);
+  const daysRemaining = Math.max(0, daysBetween(asOfDate < monthStart ? monthStart : asOfDate, monthEnd));
+  const fractionRemaining = Math.min(1, daysRemaining / daysInMonth);
+
+  // 1. Recurring component — sum of patterns whose next occurrence falls in
+  //    the remaining portion of the month.
+  let recIncome = 0;
+  let recExpenses = 0;
+  for (const p of patterns.recurringIncome) {
+    if (p.confidenceTier === "low") continue;
+    if (p.nextExpected >= today && p.nextExpected <= monthEnd) {
+      recIncome += p.typicalAmount;
+    }
+  }
+  for (const p of patterns.recurringExpenses) {
+    if (p.confidenceTier === "low") continue;
+    if (p.nextExpected >= today && p.nextExpected <= monthEnd) {
+      recExpenses += p.typicalAmount;
+    }
+  }
+
+  // 2. One-off avg component — pro-rated by remaining-month fraction.
+  const ooIncome = monthlyOneOffAvg.income * fractionRemaining;
+  const ooExpenses = monthlyOneOffAvg.expenses * fractionRemaining;
+
+  // 3. Actuals so far this month — straight sum.
+  let actualIncome = 0;
+  let actualExpenses = 0;
+  for (const tx of actualThisMonth) {
+    if (tx.type === "credit") actualIncome += tx.amount;
+    else actualExpenses += tx.amount;
+  }
+
+  const totalIncome = actualIncome + recIncome + ooIncome;
+  const totalExpenses = actualExpenses + recExpenses + ooExpenses;
+  const totalNet = totalIncome - totalExpenses;
+  const predictedMonthEnd = currentBalance + (recIncome + ooIncome) - (recExpenses + ooExpenses);
+
+  // 4. Historical-baseline cross-check — full-month avg net.
+  const complete = monthlySummaries.filter((m) => m.completeness !== "partial");
+  let baselineNet = 0;
+  if (complete.length >= 2) {
+    baselineNet =
+      complete.reduce((s, m) => s + (m.totalIncome - m.totalExpenses), 0) /
+      complete.length;
+  }
+  const baselineMagnitude = Math.abs(baselineNet) || 1;
+  const variancePct =
+    Math.abs(totalNet - baselineNet) / baselineMagnitude;
+  const reconciliationWarning = variancePct > 0.2 && complete.length >= 3;
+
+  // Confidence: scaled by months of history and inverse variance.
+  let confidence = 0.5;
+  if (complete.length >= 3) confidence += 0.2;
+  if (complete.length >= 6) confidence += 0.1;
+  if (variancePct < 0.1) confidence += 0.2;
+  else if (variancePct < 0.2) confidence += 0.1;
+  confidence = Math.min(1, Math.max(0, confidence));
+
+  return {
+    recurring: { income: recIncome, expenses: recExpenses, net: recIncome - recExpenses },
+    oneOffAvg: { income: ooIncome, expenses: ooExpenses, net: ooIncome - ooExpenses },
+    totalProjected: { income: totalIncome, expenses: totalExpenses, net: totalNet },
+    actualSoFar: {
+      income: actualIncome,
+      expenses: actualExpenses,
+      net: actualIncome - actualExpenses,
+    },
+    predictedMonthEnd,
+    confidence,
+    variancePct,
+    reconciliationWarning,
+    monthsUsed: complete.length,
+    daysRemaining,
+    daysInMonth,
+    asOfDate,
+    monthEndDate: monthEnd,
+  };
+}

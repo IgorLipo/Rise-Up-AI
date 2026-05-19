@@ -3,10 +3,12 @@ import { BottomTabBar } from "@/components/nav/bottom-tab-bar";
 import { FloatingBack } from "@/components/nav/floating-back";
 import { CompanySelector } from "@/components/nav/company-selector";
 import { LogoutButton } from "@/components/nav/logout-button";
+import { NavProgress } from "@/components/nav/nav-progress";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex flex-col min-h-full bg-zinc-50">
+      <NavProgress />
       <nav className="hidden md:block sticky top-0 z-50 bg-white border-b border-zinc-200">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-8">

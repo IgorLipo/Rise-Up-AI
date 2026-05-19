@@ -131,7 +131,10 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bcarisbrooke\s*ltc\b/i,              // tennis club
     /\bevolution\s*fitness\b/i,
     /\bufs\s*\*evolution/i,
-    /\bwww\.e\.org\b/i,                    // Energy UK membership
+    // Telecom / phone — CSV treats these as Subscription, not Utility
+    /\bvodafone\b/i, /\bee\s*(?:limited|ltd)?\b/i,
+    /\bo2\b/i, /\bthree\s*mobile\b/i, /\btalktalk\b/i,
+    /\baerial\s*direct\b/i,
   ],
   "car-expenses": [
     // Car brands
@@ -171,6 +174,7 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bnewport\s*pagnell\s*n-?\s*sta/i,
     /\bst\s*peters\s*road\s*service/i,
     /\bonstr\s*\(?e\)?\s*basingstoke/i,   // Milton Keynes onstreet
+    /\b(?:leicester|city|borough)?\s*council\s*park/i,  // council parking (not tax)
     // Parking
     /\bpaybyphone\b/i, /\bringgo\b/i,
     /\bncp\b/i, /\bq-park\b/i, /\bq\s*park\b/i,
@@ -250,8 +254,9 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bnon-domestic\s*rates\b/i,
     /\bhbbc\b/i,
     /\bpensions?\s*regulat/i,
-    /\bcouncil\b(?!\s*estate)/i,
-    /\bcou\b(?!\s*(?:estate|property|house))\b/i,
+    // Council, but NOT "council park" (parking) or "council estate".
+    /\bcouncil\b(?!\s*(?:estate|park|parking))/i,
+    /\bcou\b(?!\s*(?:estate|property|house|park|parking))\b/i,
     // Council abbreviations
     /\blcc\b/i,
     /\bl\s*b\s*camden\b/i,
@@ -261,7 +266,8 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     // Payment portals
     /\bpaynotice\b/i,
     /\bcouncil\s*(?:counter|internet|web|online)\s*pay/i,
-    /\bcouncil\s*park\b/i,
+    // ⚠ Council parking (LEICESTER COUNCIL PARK) is NOT a tax — handled
+    // separately as car-expenses. Don't add a council-park pattern here.
     // Tax/debt collectors
     /\bbristow\s*(?:and|&)\s*sutor\b/i,
     /\bcompanies\s*house\b/i, /\bcompanieshouse\b/i,
@@ -298,8 +304,9 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\bpropel\s*finance\b/i,
     // Royal Bank / RBS recurring outflows look like loan / CC payments
     /\broyal\s*bank\b\s*\d{1,2}[a-z]{3}\b/i,
-    // Internal credit-card statement clearance: "30MAY A/C 37523686"
-    /\b\d{1,2}[a-z]{3}\s+a\/c\s*\d{4,}\b/i,
+    // NOTE: A/C statement clearance ("30MAY A/C 37523686") is bank-fees, not
+    // loans. The pattern lives in bank-fees and must run first — see
+    // SUBCATEGORY_KEYWORDS order: bank-fees is now placed BEFORE loans.
   ],
   "supplier-payments": [
     /\b(?:supplier|wholesale|distributor|inventory|stock\s*purchase)\b/i,
@@ -317,10 +324,12 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\b(?:edf|e\.on|eon)\b/i,
     // Water companies
     /\b(?:severn\s*trent|thames\s*water|anglian\s*water|yorkshire\s*water|welsh\s*water|southern\s*water|wessex\s*water|united\s*utilities)\b/i,
-    // Telecom
-    /\b(?:vodafone|ee\s*(?:limited|ltd)?|o2|three|talktalk|bt\s*(?:group)?|virgin\s*media|sky\s*(?:broadband|internet)?|plusnet|hyperoptic|zen\s*internet|g\.?network|community\s*fibre)\b/i,
+    // Broadband / ISP only (telecom moved to subscriptions per CSV ground truth)
+    /\b(?:bt\s*(?:group)?|virgin\s*media|sky\s*(?:broadband|internet)?|plusnet|hyperoptic|zen\s*internet|g\.?network|community\s*fibre)\b/i,
+    // Energy-membership body (Energy UK)
+    /\bwww\.e\.org\b/i,
     // Generic utility keywords
-    /\b(?:aerial|electric|gas\s|energy\s|water\s|broadband|internet|phone\s*bill|mobile\s*bill)\b/i,
+    /\b(?:electric|gas\s|energy\s|water\s|broadband|internet|phone\s*bill|mobile\s*bill)\b/i,
     /\butility\b/i,
   ],
   "bank-fees": [
@@ -422,6 +431,11 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
     /\baa\s*print\b/i, /\bminuteman\s*press\b/i,  // print / marketing
     /\bdariusz\s*browarek\b/i,
     /\bp\s*zimecki\b/i,                       // builder
+    /\bg45\s*property\s*maint/i,              // G45 property maintenance
+    /\behmad\s*ajij\b/i,
+    /\bdrainage\s*&?\s*pest\b/i,
+    /\bautohorn\s*fleet\b/i,                  // Fleet service
+    /\bmotorpoint\b/i,
     /\bsleep\s*assured\b/i,
     /\bjorge\s*lopes\b/i, /\baccess\s*uk\b.*\binitial\s*payment\b/i,
     /\bshona\s*fabulous\s*fac\b/i,            // events / face painting
@@ -479,15 +493,89 @@ const SUBCATEGORY_KEYWORDS: Record<Subcategory, RegExp[]> = {
   "uncategorized": [/./],
 };
 
+// High-priority patterns that should win over the main keyword loop.
+// Each entry: [regex, subcategory]. First match wins.
+const PRIORITY_PATTERNS: Array<[RegExp, Subcategory]> = [
+  // A/C statement clearance — must beat the loose `\bloan\b` match.
+  [/\b\d{1,2}[a-z]{3}\s+a\/c\s*\d{4,}\b/i, "bank-fees"],
+  // Council parking — must beat the loose `\bcouncil\b` match.
+  [/\bcouncil\s*park\b/i, "car-expenses"],
+  // Ace Marketing — name contains "marketing" but CSV ground truth treats
+  // it as Professional Services (consultancy, not ad buys).
+  [/\bace\s*marketing\b/i, "professional-services"],
+  // Inter-company transfers — must beat property-income heuristic.
+  [/\b(?:come\s*toge|same\s*company\s*accou)\b/i, "bank-fees"],
+  // Failed transfers / refunds.
+  [/\bfp\s*reject\b/i, "bank-fees"],
+  // Royal Bank lines like "ROYAL BANK 07JUL" are Cash Withdrawals (CSV ground
+  // truth). Must beat the loans/bank-fees patterns.
+  [/^\s*royal\s*bank\s+\d{1,2}[a-z]{3}\b/i, "bank-fees"],
+  // Named property-maintenance contractors with INV/INVOICE references —
+  // these must beat the generic `\binv\b` in supplier-payments.
+  [/\bg45\s*property\s*maint/i, "professional-services"],
+  [/\behmad\s*ajij\b/i, "professional-services"],
+  [/\bdrainage\s*&?\s*pest\b/i, "professional-services"],
+  [/\bmy\s*projectz\b/i, "professional-services"],
+  [/\bautohorn\s*fleet\b/i, "car-expenses"],
+  [/\bmotorpoint\b/i, "car-expenses"],
+  // Named contractors whose payments include a property address — the
+  // address-shape heuristic would otherwise route to "rent". These known
+  // individual contractors take precedence.
+  [/\bm\s*rayyan\s*sheikh\b/i, "professional-services"],
+  [/\bkane\s*jones\b/i, "professional-services"],
+  [/\bdavinder\s*singh\b/i, "professional-services"],
+  [/\bshafikuz\s*zaman\b/i, "professional-services"],
+  [/\bwahiduz\s*zaman\b/i, "professional-services"],
+  [/\bdarius?z?\s*browarek\b/i, "professional-services"],
+  [/\bi\s*szachidewicz\b/i, "professional-services"],
+  [/\bp\s*zimecki\b/i, "professional-services"],
+  [/\bsatinder\s*singh\b/i, "professional-services"],
+  [/\bfaizan\s*shafiq\b/i, "professional-services"],
+  [/\bkenneth\s*obilaso\b/i, "professional-services"],
+  [/\bshaheeduz\s*zaman\b/i, "professional-services"],
+  [/\bjorge\s*lopes\b/i, "professional-services"],
+  // MONZO + Inv pattern (one of the contractors uses Monzo invoicing)
+  [/\bmonzo\s+inv-?\d+/i, "professional-services"],
+  // ACE PROPERTIES = landlord property mgmt firm
+  [/\bace\s*properties\b/i, "rent"],
+  [/\bm\s*f\s*shahul\s*hameed\b/i, "professional-services"],
+  [/\bmujtaba\s*hashimi\b/i, "professional-services"],
+  [/\bag\s*ahmed\s+travel\b/i, "car-expenses"],
+  // Known property landlords/agents (when no "rent" token present)
+  [/\bhiral\s*keshvala\b/i, "rent"],
+  [/\bhitesh\s*khodiyar\b/i, "rent"],
+];
+
+// Property-related merchants whose direction determines the actual subcategory.
+// A payment FROM "TRANQUIL ACCOMMODA" is rent income; a payment TO "SEQUOIA
+// PROPERTY G" is rent expense. The classifier resolves these via the
+// `direction` argument before falling through to the keyword loop.
+const PROPERTY_FLOW_PATTERNS: RegExp[] = [
+  /\btranquil\s*accommoda?\b/i, /\baccommoda\b/i,
+  /\bsequoia\s*property\b/i, /\bsequoia\b/i,
+  /\bk\s*p\s*shahbaz\b/i,
+  /\bonline\s*estate?\b/i, /\bmidshire\s*propertie?\b/i,
+  /\bonline\s*estate\s*agen/i,
+  /\brydell\s*ltd\b/i, /\bwayoflife\.com\b/i,
+  /\bnasim\s*holdings?\b/i, /\bosiris\b/i,
+  /\bmm\s*property\b/i, /\bhaus\s*property\b/i,
+  /\bgreen\s*acres\b/i, /\bamha\s*leicester\b/i,
+  /\bpaul\s*mahil\b/i, /\blandlord\s*beds?\b/i,
+  /\bsandhar\s*investment\b/i, /\bdawood\s*osman\b/i,
+  /\bshenu\s*investments?\b/i, /\bhomebound\b/i,
+  /\bops\s*rent\b/i, /\bpmg\b/i, /\bmahil\b/i,
+  /\bmidlands\s*property\b/i,
+  /\bunited92\b/i,                            // Property management firm
+  // Person-name + UK street-address shape (house-number + street + road-type).
+  /\b\d{1,4}[a-z]?\s+[A-Za-z]+\s+(?:road|street|drive|avenue|lane|crescent|close|rd|dr|ave|ln|cres|crs|gardens|gdns|terrace|grove|mews|parade)\b/i,
+  /\brent\s*(?:income|payment|receipt|collection|le\d+[a-z]+|part)?\b/i,
+];
+
 /**
  * Classify a transaction description.
  *
  * Hard rule: never returns "uncategorized" to callers. If no keyword pattern
- * matches, falls back to a direction-aware best-guess essence category
- * (the caller passes `direction` so we can route credits → property-income
- * and debits → supplier-payments). The original "uncategorized" subcategory
- * is no longer surfaced anywhere — it's an internal-only state inside
- * matching loops.
+ * matches, falls back to a direction-aware best-guess essence category.
  */
 export function classifySubcategory(
   description: string,
@@ -499,9 +587,56 @@ export function classifySubcategory(
   const normalized = normalizeMerchant(description);
   const candidates = raw === normalized ? [raw] : [normalized, raw];
 
+  // === Stage 0a: explicit rent tokens win over everything ===
+  // If the description literally says "rent" or "RNT", route by direction.
+  // This beats contractor-name overrides (a person who is BOTH a contractor
+  // and a landlord — the "rent" token tells us which role this tx is).
+  const RENT_TOKEN = /\b(?:rent|rnt)\b/i;
+  if (direction) {
+    for (const candidate of candidates) {
+      if (RENT_TOKEN.test(candidate)) {
+        if (direction === "credit") {
+          return { category: "Other Income", subcategory: "property-income", confidence: 0.9 };
+        }
+        return { category: "Rent & Property", subcategory: "rent", confidence: 0.9 };
+      }
+    }
+  }
+
+  // === Stage 0b: high-priority absolute overrides ===
+  for (const [pattern, subcategory] of PRIORITY_PATTERNS) {
+    for (const candidate of candidates) {
+      if (pattern.test(candidate)) {
+        return { category: mapToCategory(subcategory), subcategory, confidence: 0.9 };
+      }
+    }
+  }
+
+  // === Stage 1: direction-aware property flow ===
+  // Run BEFORE the keyword loop so that direction-sensitive merchants don't
+  // get bucketed under "property-management" regardless of which way the
+  // money flows.
+  if (direction) {
+    for (const pattern of PROPERTY_FLOW_PATTERNS) {
+      for (const candidate of candidates) {
+        if (pattern.test(candidate)) {
+          if (direction === "credit") {
+            return { category: "Other Income", subcategory: "property-income", confidence: 0.85 };
+          }
+          return { category: "Rent & Property", subcategory: "rent", confidence: 0.85 };
+        }
+      }
+    }
+  }
+
+  // === Stage 2: keyword loop ===
   const entries = Object.entries(SUBCATEGORY_KEYWORDS) as [Subcategory, RegExp[]][];
   for (const [subcategory, patterns] of entries) {
     if (subcategory === "uncategorized" || subcategory === "one-off") continue;
+    // Skip property-income/property-management in stage 2 — they're handled
+    // by direction in stage 1. This prevents `\btranquil\s*accommoda\b` in
+    // property-management from winning over the direction logic.
+    if (subcategory === "property-income" || subcategory === "property-management" || subcategory === "rent") continue;
     for (const pattern of patterns) {
       for (const candidate of candidates) {
         if (pattern.test(candidate)) {
@@ -511,10 +646,7 @@ export function classifySubcategory(
     }
   }
 
-  // Fallback: route by direction. We never expose "uncategorized" to callers.
-  // The "one-off" flag is tracked separately (cross-month learner sets it
-  // when a vendor has only ever appeared once) — the subcategory still
-  // reflects the essence of the transaction.
+  // === Stage 3: direction fallback ===
   if (direction === "credit") {
     return { category: "Other Income", subcategory: "property-income", confidence: 0.3 };
   }

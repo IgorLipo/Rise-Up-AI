@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { detectAllAsync } from "@/lib/detection";
 import { generateForecast, daysBetween, validateDailyForecast } from "@/lib/forecast";
 import { computeHistoricalForecast, type HistoricalForecast } from "@/lib/forecast/historical-forecaster";
+import { computeHybridForecast, type HybridForecast } from "@/lib/forecast/hybrid-forecaster";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
@@ -684,6 +685,7 @@ async function computeAggregate(
   // Anchored on trailing 3-month actuals from statement_history.
   // Backtest MAE £7k vs £33k for recurring-only — used as the primary
   // month-end projection in the UI.
+  let hybridForecast: HybridForecast | null = null;
   let historicalForecast: HistoricalForecast | null = null;
   if (latestClosingBalance != null && latestPeriodTo) {
     // Use ALL complete historical months (passing Infinity means "no cap").
@@ -695,6 +697,18 @@ async function computeAggregate(
       latestPeriodTo,
       undefined,
       Number.POSITIVE_INFINITY
+    );
+    hybridForecast = computeHybridForecast(
+      displayPatterns,
+      monthlySummaries,
+      latestClosingBalance,
+      latestPeriodTo,
+      actualThisMonth.map((tx) => ({ amount: tx.amount, type: tx.type })),
+      {
+        income: learningReport.monthlyOneOffIncomeAvg,
+        expenses: learningReport.monthlyOneOffExpenseAvg,
+        historyMonths: learningReport.totalMonths,
+      }
     );
   }
 
@@ -866,6 +880,8 @@ async function computeAggregate(
     forecastError,
 
     historicalForecast,
+
+    hybridForecast,
 
     monthly: monthlySummaries,
 
