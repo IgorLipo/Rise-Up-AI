@@ -159,45 +159,48 @@ export function generateDailyForecast(
     const sub = (payment as { subcategory?: string }).subcategory
       ?? (direction === "income" ? "property-income" : "supplier-payments");
 
-    // Collect days-of-month from prior occurrences.
-    const dom = new Set<number>();
+    // A recurring pattern fires ONCE per month. Compute its typical day-of-
+    // month from history: use the MODE (most common day). If equally split,
+    // use the median. Previous version placed one projection per UNIQUE day
+    // the vendor ever appeared — for vendors with variable timing this
+    // duplicated income/expenses, blowing the forecast up by 5-10x.
+    const dayCounts = new Map<number, number>();
     for (const o of payment.occurrences) {
       const d = new Date(o.date + "T00:00:00Z").getUTCDate();
-      if (d >= 1 && d <= 31) dom.add(d);
+      if (d >= 1 && d <= 31) dayCounts.set(d, (dayCounts.get(d) ?? 0) + 1);
     }
-    // Fallback to the nextExpected day if we have no historical occurrences.
-    if (dom.size === 0) {
+    let typicalDay: number | null = null;
+    if (dayCounts.size > 0) {
+      const sorted = [...dayCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+      typicalDay = sorted[0][0];
+    } else {
       const d = new Date(payment.nextExpected + "T00:00:00Z").getUTCDate();
-      if (d >= 1 && d <= 31) dom.add(d);
+      if (d >= 1 && d <= 31) typicalDay = d;
     }
+    if (typicalDay == null) return;
 
-    // Place ONE projection per typical-DOM in this calendar month.
-    const placedThisMonth = new Set<string>();
-    for (const day of dom) {
-      const candidate = new Date(
-        Date.UTC(
-          new Date(today + "T00:00:00Z").getUTCFullYear(),
-          new Date(today + "T00:00:00Z").getUTCMonth(),
-          day
+    const todayDate = new Date(today + "T00:00:00Z");
+    const candidate = new Date(
+      Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), typicalDay)
+    );
+    const candidateStr = formatDate(candidate);
+    if (candidateStr.slice(0, 7) !== today.slice(0, 7)) return;
+
+    // Skip if an actual from this vendor already covers this month.
+    const merch = payment.merchant.toLowerCase();
+    for (const [, txs] of actualsByDate) {
+      if (
+        txs.some(
+          (t) =>
+            t.merchant.toLowerCase().includes(merch) ||
+            merch.includes(t.merchant.toLowerCase())
         )
-      );
-      const candidateStr = formatDate(candidate);
-      // Skip if the day rolled into the wrong month (e.g. Feb 31).
-      if (candidateStr.slice(0, 7) !== today.slice(0, 7)) continue;
-      if (placedThisMonth.has(candidateStr)) continue;
-      placedThisMonth.add(candidateStr);
-
-      // Skip past days where an actual transaction from THIS vendor already
-      // exists (the actual is more accurate than the projection).
-      const dayActuals = actualsByDate.get(candidateStr) ?? [];
-      const merch = payment.merchant.toLowerCase();
-      const vendorAlreadyActual = dayActuals.some(
-        (t) => t.merchant.toLowerCase().includes(merch) || merch.includes(t.merchant.toLowerCase())
-      );
-      if (vendorAlreadyActual) continue;
-
-      addToDay(candidateStr, buildTx(payment, direction, sub), payment.confidenceTier === "medium");
+      ) {
+        return;
+      }
     }
+
+    addToDay(candidateStr, buildTx(payment, direction, sub), payment.confidenceTier === "medium");
   }
   for (const p of patterns.recurringExpenses) placeRecurringAcrossMonth(p, "expense");
   for (const i of patterns.recurringIncome) placeRecurringAcrossMonth(i, "income");

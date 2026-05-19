@@ -54,6 +54,23 @@ interface SuspiciousInfo {
 
 const PAGE_SIZES = [25, 50, 100];
 
+// Mirror of the server-side canonicalFirmName — kept inline to avoid a
+// server-only import. Keep these two lists in sync.
+function canonicalFirmNameLocal(description: string): string | null {
+  const d = description.toLowerCase();
+  if (d.includes("tranquil")) return "TRANQUIL ACCOMMODA";
+  if (d.includes("sequoia")) return "SEQUOIA PROPERTY";
+  if (d.includes("midlands")) return "MIDLANDS PROPERTY";
+  if (d.includes("haus")) return "HAUS PROPERTY";
+  if (d.includes("online estate")) return "ONLINE ESTATE";
+  if (d.includes("amha")) return "AMHA LEICESTER";
+  if (d.includes("nasim")) return "NASIM HOLDINGS";
+  if (d.includes("homebound")) return "HOMEBOUND";
+  if (d.includes("ace propertie")) return "ACE PROPERTIES";
+  if (d.includes("midshire")) return "MIDSHIRE PROPERTIES";
+  return null;
+}
+
 function TransactionsPageInner() {
   const { companyId } = useActiveCompany();
   const searchParams = useSearchParams();
@@ -85,8 +102,10 @@ function TransactionsPageInner() {
           .then((r) => r.json())
           .then((listJson) => {
             const docs = listJson.documents ?? [];
+            // Load ALL documents — the previous slice(0, 10) was capping
+            // statements and dropping one full month of transactions.
             Promise.all(
-              docs.slice(0, 10).map((d: { id: string }) =>
+              docs.map((d: { id: string }) =>
                 fetch(`/api/documents/${d.id}`).then((r) => r.json())
               )
             ).then((results) => {
@@ -179,11 +198,23 @@ function TransactionsPageInner() {
         return suspiciousMap.has(key);
       });
     } else if (filter === "one-off") {
-      // One-off = vendor appeared exactly once across all uploaded history.
+      // One-off = vendor appeared exactly once AND its property-management
+      // firm umbrella also has <2 hits. Tenants under known firms (TRANQUIL
+      // ACCOMMODA etc.) don't count as one-offs even when their per-property
+      // suffix is unique.
+      // Compute firm rollup once.
+      const firmTotals = new Map<string, number>();
+      for (const v of vendorMap.values()) {
+        const firm = canonicalFirmNameLocal(v.canonicalName);
+        if (firm) firmTotals.set(firm, (firmTotals.get(firm) ?? 0) + v.appearanceCount);
+      }
       result = result.filter((tx) => {
         const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
         const vendor = vendorMap.get(key);
-        return !vendor || vendor.appearanceCount <= 1;
+        if (vendor && vendor.appearanceCount > 1) return false;
+        const firm = canonicalFirmNameLocal(tx.description);
+        if (firm && (firmTotals.get(firm) ?? 0) >= 2) return false;
+        return true;
       });
     } else if (filter !== "all") {
       result = result.filter((tx) => resolveSubcategory(tx) === filter);
@@ -357,12 +388,21 @@ function TransactionsPageInner() {
           const sub = resolveSubcategory(tx);
           counts.set(sub, (counts.get(sub) ?? 0) + 1);
         }
-        // One-off count: vendors with appearanceCount <= 1.
+        // One-off count uses firm rollup so per-property variants of a known
+        // firm don't all count as one-offs.
+        const firmTotals = new Map<string, number>();
+        for (const v of vendorMap.values()) {
+          const firm = canonicalFirmNameLocal(v.canonicalName);
+          if (firm) firmTotals.set(firm, (firmTotals.get(firm) ?? 0) + v.appearanceCount);
+        }
         let oneOffCount = 0;
         for (const tx of monthFiltered) {
           const key = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
           const vendor = vendorMap.get(key);
-          if (!vendor || vendor.appearanceCount <= 1) oneOffCount++;
+          if (vendor && vendor.appearanceCount > 1) continue;
+          const firm = canonicalFirmNameLocal(tx.description);
+          if (firm && (firmTotals.get(firm) ?? 0) >= 2) continue;
+          oneOffCount++;
         }
         counts.set("one-off", oneOffCount);
         const suspiciousCount = monthFiltered.filter((tx) => {

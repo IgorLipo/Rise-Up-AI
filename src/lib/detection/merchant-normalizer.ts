@@ -104,6 +104,48 @@ const ADDRESS_NOISE = new Set([
   "ltd", "limited", "plc", "llp", "inc", "corp", "corporation", "group", "holdings", "holding",
 ]);
 
+// Property-management firms that have many per-property variants. For the
+// ONE-OFF flag (cross-month-learner), all variants count as the same firm —
+// so a tenant appearing once doesn't get flagged as a one-off if the firm
+// has many appearances. But for PATTERN DETECTION, we keep per-property
+// granularity (stable amounts per property → cleaner recurrence detection).
+export const CANONICAL_FIRM_PATTERNS: RegExp[] = [
+  /\btranquil\s*accommoda/i,
+  /\bsequoia\s*property/i,
+  /\bmidlands?\s*property/i,
+  /\bhaus\s*property\s*grou/i,
+  /\bonline\s*estate?\s*agen/i,
+  /\bamha\s*leiceste/i,
+  /\bnasim\s*holding/i,
+  /\bthe\s*homebound\s*grou/i,
+  /\bace\s*propertie/i,
+  /\bmidshire\s*propertie/i,
+];
+
+/**
+ * Returns the firm name when a description matches a known property-management
+ * firm, otherwise null. Used by the one-off classifier to avoid flagging
+ * individual property variants as one-offs when the firm itself recurs.
+ */
+export function canonicalFirmName(description: string): string | null {
+  const map: Record<string, string> = {
+    "tranquil": "TRANQUIL ACCOMMODA",
+    "sequoia": "SEQUOIA PROPERTY",
+    "midlands": "MIDLANDS PROPERTY",
+    "haus": "HAUS PROPERTY",
+    "online estate": "ONLINE ESTATE",
+    "amha": "AMHA LEICESTER",
+    "nasim": "NASIM HOLDINGS",
+    "homebound": "HOMEBOUND",
+    "ace propertie": "ACE PROPERTIES",
+    "midshire": "MIDSHIRE PROPERTIES",
+  };
+  for (const [key, canonical] of Object.entries(map)) {
+    if (description.toLowerCase().includes(key)) return canonical;
+  }
+  return null;
+}
+
 // Extract the core merchant name — skip address/unit noise and take meaningful words.
 // Uses up to 4 words (more than before) for longer merchant names.
 export function coreMerchant(description: string): string {
@@ -115,16 +157,18 @@ export function coreMerchant(description: string): string {
   const words = normalized.split(/\s+/);
   const core: string[] = [];
 
-  for (const word of words) {
+  for (const rawWord of words) {
     if (core.length >= 4) break;
-    // Skip pure digits
+    // Strip trailing/leading punctuation so "FLAT 1," and "FLAT 1" produce
+    // the same core merchant key. Previously, the comma made TRANQUIL
+    // ACCOMMODA FLAT 1, … and TRANQUIL ACCOMMODA FLAT 1 … look like two
+    // different vendors, breaking recurrence detection and flagging every
+    // tenant as a one-off.
+    const word = rawWord.replace(/^[^A-Za-z0-9&]+|[^A-Za-z0-9&]+$/g, "");
+    if (!word) continue;
     if (/^\d+$/.test(word)) continue;
-    // Single characters — keep if it's a letter that pairs with a meaningful next
-    // token (uncommon now that ampersand-joined names are pre-collapsed).
     if (word.length < 2) continue;
-    // Skip address/unit noise
     if (ADDRESS_NOISE.has(word.toLowerCase())) continue;
-    // Skip short unit-like codes: e.g. "F23", "A12", "B7"
     if (/^[A-Za-z]\d{1,3}$/.test(word)) continue;
     core.push(word);
   }
