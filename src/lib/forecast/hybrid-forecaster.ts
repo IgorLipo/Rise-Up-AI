@@ -138,10 +138,10 @@ export function computeHybridForecast(
           recentMonths.reduce((s, m) => s + (v.monthlyTotals[m] ?? 0), 0) /
           recentMonths.length;
         if (v.direction === "income") {
-          recIncome += avg;
+          recIncome += Math.abs(avg);
           recurringIncomeVendors++;
         } else if (v.direction === "expense") {
-          recExpenses += avg;
+          recExpenses += Math.abs(avg);
           recurringExpenseVendors++;
         } else {
           // Mixed direction: split the avg by sign of monthly totals.
