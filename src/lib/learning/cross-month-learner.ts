@@ -3,7 +3,7 @@
 // of the company's financial behaviour — vendors, recurrence, anomalies.
 
 import type { Transaction } from "@/types";
-import { coreMerchant, normalizeMerchant } from "@/lib/detection/merchant-normalizer";
+import { coreMerchant, normalizeMerchant, canonicalFirmName } from "@/lib/detection/merchant-normalizer";
 import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
 import type { VendorIntelEntry } from "@/lib/vendor-intel";
 
@@ -163,12 +163,27 @@ export function learnFromHistory(
   const oneOffExpenseCandidates: string[] = [];
   const suspiciousCandidates: VendorLearning[] = [];
 
+  // Roll up per-firm appearance counts so per-property variants of the same
+  // property-management firm (e.g. TRANQUIL ACCOMMODA + 80 different
+  // property suffixes) don't each register as a one-off.
+  const firmTotals = new Map<string, number>();
   for (const vendor of vendorMap.values()) {
-    // Only found once = genuine one-off — but only OVERRIDE subcategory if it
-    // wasn't already classified meaningfully by the keyword classifier.
-    // This preserves single-occurrence categorizations (e.g. one rent payment
-    // that matched the property-income heuristic) instead of dropping them.
-    if (vendor.appearanceCount < 2) {
+    const firm = canonicalFirmName(vendor.canonicalName) ??
+      canonicalFirmName(vendor.allDescriptions[0] ?? "");
+    if (firm) firmTotals.set(firm, (firmTotals.get(firm) ?? 0) + vendor.appearanceCount);
+  }
+
+  for (const vendor of vendorMap.values()) {
+    // A vendor is only a "one-off" if its firm umbrella also has < 2 hits.
+    // Without this check, a property-management firm with 80 unique per-
+    // property variants would flag 80 distinct one-offs (TRANQUIL ACCOMMODA
+    // FLAT 1 87 LR appears once → one-off, even though TRANQUIL ACCOMMODA
+    // as a firm has 200+ recurring rent payments across all properties).
+    const firm = canonicalFirmName(vendor.canonicalName) ??
+      canonicalFirmName(vendor.allDescriptions[0] ?? "");
+    const firmCount = firm ? (firmTotals.get(firm) ?? 0) : 0;
+    const reallyOneOff = vendor.appearanceCount < 2 && firmCount < 2;
+    if (reallyOneOff) {
       if (vendor.subcategory === "uncategorized") {
         vendor.subcategory = "one-off";
         vendor.category = "Uncategorized";

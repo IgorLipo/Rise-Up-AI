@@ -61,9 +61,11 @@ export default function ForecastPage() {
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-zinc-900">Daily Forecast</h1>
+          <h1 className="text-lg font-bold text-zinc-900">
+            {new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })} forecast
+          </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Today to month-end
+            Full month · {daily.length} days · actuals through today, projections to month-end
             {data.balanceIsEstimated && (
               <span className="text-amber-600 ml-1">
                 · Balance estimated from {data.balanceCatchUpDays} days of catch-up
