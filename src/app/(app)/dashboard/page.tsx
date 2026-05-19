@@ -69,6 +69,21 @@ interface AggregateResponse {
     asOfDate: string;
     monthEndDate: string;
   } | null;
+  hybridForecast: {
+    recurring: { income: number; expenses: number; net: number };
+    oneOffAvg: { income: number; expenses: number; net: number };
+    totalProjected: { income: number; expenses: number; net: number };
+    actualSoFar: { income: number; expenses: number; net: number };
+    predictedMonthEnd: number;
+    confidence: number;
+    variancePct: number;
+    reconciliationWarning: boolean;
+    monthsUsed: number;
+    daysRemaining: number;
+    daysInMonth: number;
+    asOfDate: string;
+    monthEndDate: string;
+  } | null;
   monthly: Array<{
     month: string;
     label: string;
@@ -411,6 +426,7 @@ function DashboardContent() {
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
             historicalForecast={data.historicalForecast}
+            hybridForecast={data.hybridForecast}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
@@ -443,6 +459,7 @@ function DashboardContent() {
             statementInfo={data.statementInfo}
             balanceValidation={data.balanceValidation}
             historicalForecast={data.historicalForecast}
+            hybridForecast={data.hybridForecast}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}

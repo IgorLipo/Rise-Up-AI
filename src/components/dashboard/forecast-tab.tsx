@@ -65,33 +65,37 @@ interface ForecastTabProps {
     asOfDate: string;
     monthEndDate: string;
   } | null;
+  hybridForecast?: {
+    recurring: { income: number; expenses: number; net: number };
+    oneOffAvg: { income: number; expenses: number; net: number };
+    totalProjected: { income: number; expenses: number; net: number };
+    actualSoFar: { income: number; expenses: number; net: number };
+    predictedMonthEnd: number;
+    confidence: number;
+    variancePct: number;
+    reconciliationWarning: boolean;
+    monthsUsed: number;
+    daysRemaining: number;
+    daysInMonth: number;
+    asOfDate: string;
+    monthEndDate: string;
+  } | null;
   monthlyOneOffExpenseAvg?: number;
   monthlyOneOffIncomeAvg?: number;
   oneOffHistoryMonths?: number;
 }
 
 export function ForecastTab(props: ForecastTabProps) {
-  const { forecast, statementInfo, historicalForecast } = props;
+  const { forecast, statementInfo, historicalForecast, hybridForecast } = props;
 
-  // Derive whole-month actuals + projection from the daily forecast (which
-  // now spans 1st → last of the current calendar month, with actuals for
-  // past days and recurring projections for future days).
-  const today = new Date().toISOString().split("T")[0];
-  const daily = forecast?.dailyForecast ?? [];
-  const pastDays = daily.filter((d) => d.date < today);
-  const futureDays = daily.filter((d) => d.date >= today);
-  const incomeSoFar = pastDays.reduce((s, d) => s + d.expectedIncome, 0);
-  const expensesSoFar = pastDays.reduce((s, d) => s + d.expectedExpenses, 0);
-  const incomeProjected = futureDays.reduce((s, d) => s + d.expectedIncome, 0);
-  const expensesProjected = futureDays.reduce((s, d) => s + d.expectedExpenses, 0);
-  const totalMonthIncome = incomeSoFar + incomeProjected;
-  const totalMonthExpenses = expensesSoFar + expensesProjected;
   const monthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
   return (
     <div className="space-y-5">
-      {/* Whole-month forecast headline — actuals so far + projected to end. */}
-      {historicalForecast && (
+      {/* Hybrid forecast headline:
+            actuals so far + recurring projected + one-off avg buffer,
+            cross-checked against the all-months historical baseline. */}
+      {hybridForecast && historicalForecast && (
         <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 rounded-xl p-5">
           <div className="flex items-start justify-between mb-3">
             <div>
@@ -99,61 +103,105 @@ export function ForecastTab(props: ForecastTabProps) {
                 {monthLabel} — projected month-end
               </div>
               <div className="text-xs text-zinc-500 mt-0.5">
-                {historicalForecast.method} · projecting through {historicalForecast.monthEndDate}
+                Recurring + one-off avg · cross-checked against {hybridForecast.monthsUsed}-month history
               </div>
             </div>
             <div className="text-right">
               <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Confidence</div>
               <div className="text-sm font-semibold text-indigo-700">
-                {Math.round(historicalForecast.confidence * 100)}%
+                {Math.round(hybridForecast.confidence * 100)}%
               </div>
             </div>
           </div>
 
-          <div className="text-3xl font-bold tabular-nums text-indigo-700 mb-3">
-            {formatCurrency(historicalForecast.predictedMonthEnd)}
+          <div className="text-3xl font-bold tabular-nums text-indigo-700 mb-1">
+            {formatCurrency(hybridForecast.predictedMonthEnd)}
+          </div>
+          <div className="text-xs text-zinc-500 mb-3">
+            by {hybridForecast.monthEndDate}
           </div>
 
-          <div className="border-t border-indigo-100 pt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Income so far</span>
-              <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(incomeSoFar)}</span>
+          {hybridForecast.reconciliationWarning && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+              ⚠️ <span className="font-semibold">Methods disagree by {Math.round(hybridForecast.variancePct * 100)}%.</span>{" "}
+              The recurring + one-off model says <span className="font-mono">{formatCurrency(hybridForecast.totalProjected.net)}</span> net,
+              but the {hybridForecast.monthsUsed}-month historical average says <span className="font-mono">{formatCurrency(historicalForecast.avgMonthlyNet)}</span> net.
+              Recurring detection may be incomplete this month.
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Expenses so far</span>
-              <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(expensesSoFar)}</span>
+          )}
+
+          <div className="border-t border-indigo-100 pt-3 space-y-3 text-xs">
+            {/* Actuals so far */}
+            <div>
+              <div className="text-zinc-500 mb-1 font-medium">Already this month</div>
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Income received</span>
+                  <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.actualSoFar.income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Expenses paid</span>
+                  <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.actualSoFar.expenses)}</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Income expected</span>
-              <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(incomeProjected)}</span>
+
+            {/* Recurring expected */}
+            <div>
+              <div className="text-zinc-500 mb-1 font-medium">Expected (recurring patterns)</div>
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Recurring income</span>
+                  <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.recurring.income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Recurring expenses</span>
+                  <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.recurring.expenses)}</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Expenses expected</span>
-              <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(expensesProjected)}</span>
+
+            {/* One-off buffer */}
+            <div>
+              <div className="text-zinc-500 mb-1 font-medium">
+                One-off buffer
+                <span className="text-zinc-400 font-normal"> · typical non-recurring activity</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-6">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Typical one-off income</span>
+                  <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.oneOffAvg.income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Typical one-off expenses</span>
+                  <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.oneOffAvg.expenses)}</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between font-semibold pt-1 border-t border-indigo-100 col-span-2 mt-1">
-              <span className="text-zinc-700">Month total</span>
-              <span className="font-mono tabular-nums">
-                <span className="text-emerald-700">+{formatCurrency(totalMonthIncome)}</span>
-                {" "}
-                <span className="text-red-600">-{formatCurrency(totalMonthExpenses)}</span>
-                {" = "}
-                <span className={totalMonthIncome - totalMonthExpenses >= 0 ? "text-emerald-700" : "text-red-600"}>
-                  {totalMonthIncome - totalMonthExpenses >= 0 ? "+" : ""}
-                  {formatCurrency(totalMonthIncome - totalMonthExpenses)}
-                </span>
+
+            {/* Total */}
+            <div className="pt-2 border-t border-indigo-100 grid grid-cols-2 gap-x-6 font-semibold">
+              <div className="flex justify-between">
+                <span className="text-zinc-700">Month total income</span>
+                <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.totalProjected.income)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-700">Month total expenses</span>
+                <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.totalProjected.expenses)}</span>
+              </div>
+            </div>
+            <div className="flex justify-between font-bold">
+              <span className="text-zinc-900">Net for month</span>
+              <span className={`font-mono tabular-nums ${hybridForecast.totalProjected.net >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                {hybridForecast.totalProjected.net >= 0 ? "+" : ""}
+                {formatCurrency(hybridForecast.totalProjected.net)}
               </span>
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-indigo-100 text-xs text-zinc-500">
-            Based on {historicalForecast.monthsUsed} complete months of history:
-            avg income +{formatCurrency(historicalForecast.avgMonthlyIncome)}/mo,
-            expenses -{formatCurrency(historicalForecast.avgMonthlyExpenses)}/mo,
-            net{" "}
-            <span className={historicalForecast.avgMonthlyNet >= 0 ? "text-emerald-700" : "text-red-600"}>
-              {historicalForecast.avgMonthlyNet >= 0 ? "+" : ""}{formatCurrency(historicalForecast.avgMonthlyNet)}/mo
-            </span>.
+          <div className="mt-3 pt-3 border-t border-indigo-100 text-[10px] text-zinc-400">
+            Cross-check: {hybridForecast.monthsUsed}-month historical avg net = {formatCurrency(historicalForecast.avgMonthlyNet)}/mo.
+            Variance vs hybrid: {Math.round(hybridForecast.variancePct * 100)}%.
           </div>
         </div>
       )}
