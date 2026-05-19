@@ -133,7 +133,7 @@ export function computeHistoricalForecast(
     avgMonthlyExpenses: avgExpenses,
     avgMonthlyNet: avgNet,
     confidence,
-    method: `Average of ${window.length} complete months`,
+    method: `Trailing ${window.length}-month average`,
     asOfDate,
     monthEndDate: monthEnd,
   };
