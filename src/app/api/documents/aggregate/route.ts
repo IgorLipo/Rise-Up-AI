@@ -705,18 +705,12 @@ async function computeAggregate(
       monthlyTotals: Record<string, number>;
     }> = [];
     for (const v of learningReport.vendors.values()) {
+      // Store POSITIVE monthly totals. Direction is kept on the vendor;
+      // the hybrid forecaster decides which bucket to add to.
       const monthly: Record<string, number> = {};
       for (let i = 0; i < v.dates.length; i++) {
         const m = v.dates[i].slice(0, 7);
-        const isIncome = (v.incomeAmounts.length > 0)
-          && i < v.incomeAmounts.length
-          && v.incomeAmounts.includes(v.amounts[i]);
-        // For mixed-direction vendors, split per the original tx sign.
-        // For pure income / expense, all amounts go to that direction.
-        const signed = v.direction === "expense" ? -v.amounts[i]
-          : v.direction === "income" ? v.amounts[i]
-          : (isIncome ? v.amounts[i] : -v.amounts[i]);
-        monthly[m] = (monthly[m] ?? 0) + signed;
+        monthly[m] = (monthly[m] ?? 0) + Math.abs(v.amounts[i]);
       }
       vendorHistory.push({
         canonicalName: v.canonicalName,
@@ -740,12 +734,13 @@ async function computeAggregate(
       oneOffMonthsCount++;
       for (const v of vendorHistory) {
         const firedInRecent = recentMonths.filter(
-          (mm) => Math.abs(v.monthlyTotals[mm] ?? 0) > 0.005
+          (mm) => (v.monthlyTotals[mm] ?? 0) > 0.005
         ).length;
         if (firedInRecent >= 2) continue; // already in recurring component
         const amt = v.monthlyTotals[m] ?? 0;
-        if (amt > 0) oneOffIncomeSum += amt;
-        else oneOffExpenseSum += Math.abs(amt);
+        if (amt <= 0) continue;
+        if (v.direction === "income") oneOffIncomeSum += amt;
+        else oneOffExpenseSum += amt;
       }
     }
     const oneOffIncomeRecentAvg =
