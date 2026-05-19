@@ -165,7 +165,9 @@ export function ForecastTab(props: ForecastTabProps) {
             <div>
               <div className="text-zinc-500 mb-1 font-medium">
                 One-off buffer
-                <span className="text-zinc-400 font-normal"> · typical non-recurring activity</span>
+                <span className="text-zinc-400 font-normal">
+                  {" "}· avg of vendors seen once across history (e.g. a tenant who paid one month)
+                </span>
               </div>
               <div className="grid grid-cols-2 gap-x-6">
                 <div className="flex justify-between">
