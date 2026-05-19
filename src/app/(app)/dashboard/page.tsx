@@ -84,6 +84,26 @@ interface AggregateResponse {
     asOfDate: string;
     monthEndDate: string;
   } | null;
+  propertyAwareForecast: {
+    property: { income: number; expenses: number; net: number };
+    nonProperty: { income: number; expenses: number; net: number };
+    actualSoFar: { income: number; expenses: number; net: number };
+    totalProjectedNet: number;
+    predictedMonthEnd: number;
+    monthBreakdown: Array<{
+      month: string;
+      propertyIncome: number;
+      propertyExpense: number;
+      nonPropertyIncome: number;
+      nonPropertyExpense: number;
+    }>;
+    monthsUsed: number;
+    daysRemaining: number;
+    daysInMonth: number;
+    asOfDate: string;
+    monthEndDate: string;
+    confidence: number;
+  } | null;
   monthly: Array<{
     month: string;
     label: string;
@@ -427,6 +447,7 @@ function DashboardContent() {
             balanceValidation={data.balanceValidation}
             historicalForecast={data.historicalForecast}
             hybridForecast={data.hybridForecast}
+            propertyAwareForecast={data.propertyAwareForecast}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
@@ -460,6 +481,7 @@ function DashboardContent() {
             balanceValidation={data.balanceValidation}
             historicalForecast={data.historicalForecast}
             hybridForecast={data.hybridForecast}
+            propertyAwareForecast={data.propertyAwareForecast}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}

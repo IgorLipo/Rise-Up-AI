@@ -80,24 +80,214 @@ interface ForecastTabProps {
     asOfDate: string;
     monthEndDate: string;
   } | null;
+  propertyAwareForecast?: {
+    property: { income: number; expenses: number; net: number };
+    nonProperty: { income: number; expenses: number; net: number };
+    actualSoFar: { income: number; expenses: number; net: number };
+    totalProjectedNet: number;
+    predictedMonthEnd: number;
+    monthBreakdown: Array<{
+      month: string;
+      propertyIncome: number;
+      propertyExpense: number;
+      nonPropertyIncome: number;
+      nonPropertyExpense: number;
+    }>;
+    monthsUsed: number;
+    daysRemaining: number;
+    daysInMonth: number;
+    asOfDate: string;
+    monthEndDate: string;
+    confidence: number;
+  } | null;
   monthlyOneOffExpenseAvg?: number;
   monthlyOneOffIncomeAvg?: number;
   oneOffHistoryMonths?: number;
 }
 
 export function ForecastTab(props: ForecastTabProps) {
-  const { forecast, statementInfo, historicalForecast, hybridForecast } = props;
+  const { forecast, statementInfo, historicalForecast, hybridForecast, propertyAwareForecast } = props;
 
   const monthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 
   return (
     <div className="space-y-5">
-      {/* Headline: trailing 3-month historical average. This is the most
-            credible single forecast on the user's data — backtested MAE ~£7k
-            vs the recurring-only / hybrid methods which over-predict by £20k+
-            because the recurring detector under-counts expenses more than
-            income. The hybrid breakdown is kept below for transparency. */}
-      {historicalForecast && (
+      {/* Headline: Property-aware forecast.
+            Splits cashflow into property (recurring, CV 9-17% — predict by
+            per-vendor avg) and non-property (CV 9-97% — predict by simple
+            3-mo avg of totals). Validated on Jan-Apr 2026: property = 89% of
+            income & 68% of expenses. Each component forecast with the method
+            that fits its volatility. */}
+      {propertyAwareForecast && (
+        <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 rounded-xl p-5">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <div className="text-[10px] text-indigo-600 uppercase tracking-wider font-semibold">
+                {monthLabel} — projected month-end
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                Property recurring + non-property {propertyAwareForecast.monthsUsed}-mo avg
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Confidence</div>
+              <div className="text-sm font-semibold text-indigo-700">
+                {Math.round(propertyAwareForecast.confidence * 100)}%
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={`text-3xl font-bold tabular-nums mb-1 ${
+              propertyAwareForecast.predictedMonthEnd >= 0 ? "text-indigo-700" : "text-red-600"
+            }`}
+          >
+            {formatCurrency(propertyAwareForecast.predictedMonthEnd)}
+          </div>
+          <div className="text-xs text-zinc-500 mb-3">
+            by {propertyAwareForecast.monthEndDate}
+          </div>
+
+          <div className="border-t border-indigo-100 pt-3 space-y-3 text-xs">
+            {/* Property — high confidence */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-zinc-700 font-medium">
+                  Property cashflow
+                  <span className="ml-1.5 text-[10px] text-emerald-600 font-medium">
+                    high confidence
+                  </span>
+                </span>
+                <span
+                  className={`font-mono font-semibold tabular-nums ${
+                    propertyAwareForecast.property.net >= 0 ? "text-emerald-700" : "text-red-600"
+                  }`}
+                >
+                  {propertyAwareForecast.property.net >= 0 ? "+" : ""}
+                  {formatCurrency(propertyAwareForecast.property.net)}/mo
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 text-zinc-500">
+                <div className="flex justify-between">
+                  <span>Income</span>
+                  <span className="font-mono text-emerald-700">+{formatCurrency(propertyAwareForecast.property.income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Expenses</span>
+                  <span className="font-mono text-red-600">-{formatCurrency(propertyAwareForecast.property.expenses)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Non-property — variable */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-zinc-700 font-medium">
+                  Non-property cashflow
+                  <span className="ml-1.5 text-[10px] text-amber-600 font-medium">
+                    variable
+                  </span>
+                </span>
+                <span
+                  className={`font-mono font-semibold tabular-nums ${
+                    propertyAwareForecast.nonProperty.net >= 0 ? "text-emerald-700" : "text-red-600"
+                  }`}
+                >
+                  {propertyAwareForecast.nonProperty.net >= 0 ? "+" : ""}
+                  {formatCurrency(propertyAwareForecast.nonProperty.net)}/mo
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 text-zinc-500">
+                <div className="flex justify-between">
+                  <span>Income</span>
+                  <span className="font-mono text-emerald-700">+{formatCurrency(propertyAwareForecast.nonProperty.income)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Expenses</span>
+                  <span className="font-mono text-red-600">-{formatCurrency(propertyAwareForecast.nonProperty.expenses)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Already this month */}
+            {(propertyAwareForecast.actualSoFar.income > 0 || propertyAwareForecast.actualSoFar.expenses > 0) && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-zinc-700 font-medium">Already this month</span>
+                  <span
+                    className={`font-mono tabular-nums ${
+                      propertyAwareForecast.actualSoFar.net >= 0 ? "text-emerald-700" : "text-red-600"
+                    }`}
+                  >
+                    {propertyAwareForecast.actualSoFar.net >= 0 ? "+" : ""}
+                    {formatCurrency(propertyAwareForecast.actualSoFar.net)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 text-zinc-500">
+                  <div className="flex justify-between">
+                    <span>Income received</span>
+                    <span className="font-mono text-emerald-700">+{formatCurrency(propertyAwareForecast.actualSoFar.income)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Expenses paid</span>
+                    <span className="font-mono text-red-600">-{formatCurrency(propertyAwareForecast.actualSoFar.expenses)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Net for month */}
+            <div className="pt-2 border-t border-indigo-100 flex justify-between font-semibold">
+              <span className="text-zinc-900">Combined avg monthly net</span>
+              <span
+                className={`font-mono tabular-nums ${
+                  propertyAwareForecast.property.net + propertyAwareForecast.nonProperty.net >= 0
+                    ? "text-emerald-700"
+                    : "text-red-600"
+                }`}
+              >
+                {propertyAwareForecast.property.net + propertyAwareForecast.nonProperty.net >= 0 ? "+" : ""}
+                {formatCurrency(propertyAwareForecast.property.net + propertyAwareForecast.nonProperty.net)}/mo
+              </span>
+            </div>
+          </div>
+
+          {/* Per-month transparency */}
+          <details className="mt-3 pt-3 border-t border-indigo-100">
+            <summary className="cursor-pointer text-[10px] text-zinc-400 uppercase tracking-wider hover:text-zinc-600">
+              View {propertyAwareForecast.monthBreakdown.length} months used
+            </summary>
+            <div className="mt-2 space-y-1 text-xs">
+              {propertyAwareForecast.monthBreakdown.map((m) => {
+                const propNet = m.propertyIncome - m.propertyExpense;
+                const nonNet = m.nonPropertyIncome - m.nonPropertyExpense;
+                return (
+                  <div key={m.month} className="grid grid-cols-4 gap-2 text-zinc-500">
+                    <span className="font-mono">{m.month}</span>
+                    <span className="font-mono text-right">
+                      Prop: <span className={propNet >= 0 ? "text-emerald-700" : "text-red-600"}>
+                        {propNet >= 0 ? "+" : ""}{formatCurrency(propNet)}
+                      </span>
+                    </span>
+                    <span className="font-mono text-right">
+                      Non: <span className={nonNet >= 0 ? "text-emerald-700" : "text-red-600"}>
+                        {nonNet >= 0 ? "+" : ""}{formatCurrency(nonNet)}
+                      </span>
+                    </span>
+                    <span className="font-mono text-right text-zinc-700">
+                      = {propNet + nonNet >= 0 ? "+" : ""}{formatCurrency(propNet + nonNet)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        </div>
+      )}
+
+      {/* Legacy headline: trailing-3 avg. Kept as a secondary check while
+          property-aware is new. */}
+      {!propertyAwareForecast && historicalForecast && (
         <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 rounded-xl p-5">
           <div className="flex items-start justify-between mb-3">
             <div>

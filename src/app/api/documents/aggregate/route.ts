@@ -4,6 +4,7 @@ import { detectAllAsync } from "@/lib/detection";
 import { generateForecast, daysBetween, validateDailyForecast } from "@/lib/forecast";
 import { computeHistoricalForecast, type HistoricalForecast } from "@/lib/forecast/historical-forecaster";
 import { computeHybridForecast, type HybridForecast } from "@/lib/forecast/hybrid-forecaster";
+import { computePropertyAwareForecast, type PropertyAwareForecast } from "@/lib/forecast/property-aware-forecaster";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
@@ -682,6 +683,7 @@ async function computeAggregate(
   // month-end projection in the UI.
   let hybridForecast: HybridForecast | null = null;
   let historicalForecast: HistoricalForecast | null = null;
+  let propertyAwareForecast: PropertyAwareForecast | null = null;
   if (latestClosingBalance != null && latestPeriodTo) {
     // Use ALL complete historical months (passing Infinity means "no cap").
     // For this user's data (11 months) the avg-monthly figure is more stable
@@ -761,6 +763,17 @@ async function computeAggregate(
       },
       undefined,
       vendorHistory
+    );
+
+    // Property-aware forecast — the new headline method.
+    // Splits cashflow into property (recurring, stable ~9-17% CV) and
+    // non-property (avg-based, 9-97% CV) and forecasts each appropriately.
+    propertyAwareForecast = computePropertyAwareForecast(
+      allTransactions,
+      latestClosingBalance,
+      latestPeriodTo,
+      undefined,
+      3
     );
   }
 
@@ -934,6 +947,8 @@ async function computeAggregate(
     historicalForecast,
 
     hybridForecast,
+
+    propertyAwareForecast,
 
     monthly: monthlySummaries,
 
