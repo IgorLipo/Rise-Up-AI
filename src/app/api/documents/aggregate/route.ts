@@ -613,36 +613,31 @@ async function computeAggregate(
     if (seenMonthlyPeriods.has(periodKey)) continue;
     seenMonthlyPeriods.add(periodKey);
 
-    // Bucket each statement by the month it COVERS, not the period-end month.
-    // Most UK statements run roughly 1st → 1st-of-next-month, so period_end can
-    // fall on the first day of the *following* month. Using period_end as the
-    // bucket key caused two statements (e.g. the September statement ending
-    // Oct 1 and the October statement ending Oct 31) to merge into one row,
-    // making it look like other months were missing.
-    // We use whichever endpoint of the period lies furthest from the calendar
-    // boundary — i.e. the "middle" of the period — as the canonical month.
+    // Bucket each statement by the calendar month it COVERS — specifically,
+    // whichever calendar month contains the most days of the statement
+    // period. Walk through the period day by day so we handle 3-month spans
+    // correctly (e.g. period 2026-02-28 → 2026-04-01 spans Feb 1 day, Mar 31
+    // days, Apr 1 day → bucket as March, not Feb or Apr).
     const periodEnd = row.statement_period_end;
     const periodStart = row.statement_period_start;
-    const startMonth = periodStart.slice(0, 7);
-    const endMonth = periodEnd.slice(0, 7);
-    let month: string;
-    if (startMonth === endMonth) {
-      month = startMonth;
-    } else {
-      // Cross-month statement: use the month containing the larger share of
-      // days. A statement period_start=2025-06-01, period_end=2025-07-01 covers
-      // 30 days of June and 1 day of July → bucket as 2025-06.
-      const startDate = new Date(periodStart + "T00:00:00Z");
-      const endDate = new Date(periodEnd + "T00:00:00Z");
-      const totalDays =
-        (endDate.getTime() - startDate.getTime()) / 86400000 + 1;
-      const lastDayOfStartMonth = new Date(
-        Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 0)
-      );
-      const daysInStartMonth =
-        (lastDayOfStartMonth.getTime() - startDate.getTime()) / 86400000 + 1;
-      month =
-        daysInStartMonth / totalDays >= 0.5 ? startMonth : endMonth;
+    const startDate = new Date(periodStart + "T00:00:00Z");
+    const endDate = new Date(periodEnd + "T00:00:00Z");
+    const daysPerMonth = new Map<string, number>();
+    for (
+      let cur = new Date(startDate);
+      cur <= endDate;
+      cur.setUTCDate(cur.getUTCDate() + 1)
+    ) {
+      const key = cur.toISOString().slice(0, 7);
+      daysPerMonth.set(key, (daysPerMonth.get(key) ?? 0) + 1);
+    }
+    let month = periodStart.slice(0, 7);
+    let maxDays = 0;
+    for (const [k, v] of daysPerMonth) {
+      if (v > maxDays) {
+        maxDays = v;
+        month = k;
+      }
     }
 
     const label = new Date(month + "-15T00:00:00Z").toLocaleDateString("en-GB", {
@@ -691,12 +686,16 @@ async function computeAggregate(
     // Use ALL complete historical months (passing Infinity means "no cap").
     // For this user's data (11 months) the avg-monthly figure is more stable
     // and the user explicitly asked for full-history rather than trailing 3.
+    // Use the LAST 3 complete months only. The full-history average smooths
+    // over recent trend changes — if April was negative and the user is
+    // entering May, a 3-month trailing average reflects the current
+    // trajectory better than 11 months of mixed data.
     historicalForecast = computeHistoricalForecast(
       monthlySummaries,
       latestClosingBalance,
       latestPeriodTo,
       undefined,
-      Number.POSITIVE_INFINITY
+      3
     );
     hybridForecast = computeHybridForecast(
       displayPatterns,

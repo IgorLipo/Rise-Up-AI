@@ -44,3 +44,4 @@ next-env.d.ts
 .superpowers/
 .playwright-mcp/
 .env*.local
+test-pdfs/
