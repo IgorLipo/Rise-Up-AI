@@ -1,5 +1,6 @@
 import type { RecurringPayment, ConfidenceTier } from "@/lib/detection/pattern-detector";
 import type { EnrichedDetectedPatterns } from "@/lib/detection";
+import type { VendorMonthlyHistory } from "./hybrid-forecaster";
 
 export type ForecastItemStatus = "completed" | "expected" | "late" | "uncertain";
 
@@ -38,25 +39,6 @@ function formatDate(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-function hasAlreadyOccurredThisMonth(
-  occurrences: { date: string; amount: number }[],
-  today: string
-): boolean {
-  const currentMonth = today.slice(0, 7);
-  return occurrences.some(o => o.date.slice(0, 7) === currentMonth);
-}
-
-function determineStatus(
-  payment: RecurringPayment,
-  today: string,
-  monthEnd: string
-): ForecastItemStatus {
-  if (hasAlreadyOccurredThisMonth(payment.occurrences, today)) return "completed";
-  if (payment.nextExpected < today) return "late";
-  if (payment.nextExpected <= monthEnd) return "expected";
-  return "uncertain";
-}
-
 function getMonthStart(date: Date): Date {
   // Use UTC consistently — getDate()/getMonth() are local-tz, which causes
   // the iteration boundary to slip into the previous month near midnight UTC
@@ -85,21 +67,19 @@ export interface DailyForecastOptions {
   monthStartBalance?: number;
 
   /**
-   * Target month-end balance from the headline forecast. When provided, the
-   * daily chart adds a daily "Typical other activity" line whose total
-   * exactly closes the gap between the recurring-only trajectory and this
-   * target. Result: daily chart's final closing balance matches the headline.
+   * Per-vendor monthly-total history (same data the hybrid forecaster uses).
+   * Each recurring vendor gets ONE projection in the current month placed on
+   * its mode day-of-month, with amount = avg of monthlyTotals across
+   * `recentCompleteMonths`. This guarantees the chart sums to the same
+   * full-monthly recurring totals the hybrid headline shows — no scaling.
    */
-  targetMonthEndBalance?: number;
+  vendorHistory?: VendorMonthlyHistory[];
 
   /**
-   * If provided, the SUM of expectedIncome across FUTURE days (today onward)
-   * is scaled so it equals targetRecurringIncome — guaranteeing the chart's
-   * total future income matches the headline recurring income exactly. Same
-   * for expenses. Past days (actuals) are not touched.
+   * Recent complete-month keys (YYYY-MM) used by the hybrid forecaster's
+   * "fired in ≥2 of last 3" rule. Typically the last 3 complete months.
    */
-  targetRecurringIncome?: number;
-  targetRecurringExpenses?: number;
+  recentCompleteMonths?: string[];
 }
 
 export function generateDailyForecast(
@@ -126,24 +106,6 @@ export function generateDailyForecast(
     map.get(date)!.push(tx);
   };
 
-  function buildTx(
-    payment: RecurringPayment,
-    direction: "income" | "expense",
-    subcategory: string
-  ): ExpectedTransaction {
-    return {
-      merchant: payment.merchant,
-      expectedAmount: payment.typicalAmount,
-      category: direction === "income" ? "Income" : "",
-      subcategory,
-      recurring: true,
-      confidence: payment.confidence,
-      confidenceTier: payment.confidenceTier,
-      status: determineStatus(payment, today, monthEndStr),
-      recurrence: payment,
-    };
-  }
-
   // 1. Actuals from this month — these REPLACE pattern estimates on past days.
   const actualsByDate = new Map<string, ExpectedTransaction[]>();
   if (options.actualThisMonth) {
@@ -167,64 +129,90 @@ export function generateDailyForecast(
     }
   }
 
-  // 2. Project recurring patterns across the WHOLE current month so that
-  //    past days without actual coverage (e.g. the statement period ended
-  //    before today) still show predictions. For each recurring pattern,
-  //    derive the day-of-month it typically lands on from its history and
-  //    place a projection on that date — unless an actual already sits there.
-  function placeRecurringAcrossMonth(
-    payment: RecurringPayment,
-    direction: "income" | "expense"
-  ) {
-    if (payment.confidenceTier === "low") return;
-    const sub = (payment as { subcategory?: string }).subcategory
-      ?? (direction === "income" ? "property-income" : "supplier-payments");
+  // 2. Project recurring vendors from vendorHistory across the current month.
+  //    Each vendor that fired in ≥2 of the last 3 complete months gets ONE
+  //    projection placed on its mode day-of-month, with amount equal to its
+  //    avg-monthly-total across those months. This is the SAME data the
+  //    hybrid forecaster uses, so chart_sum == hybrid.recurring naturally —
+  //    no post-pass scaling required.
+  if (options.vendorHistory && options.recentCompleteMonths && options.recentCompleteMonths.length > 0) {
+    const recent = options.recentCompleteMonths;
+    const monthKey = today.slice(0, 7);
+    for (const vendor of options.vendorHistory) {
+      const firedCount = recent.filter(
+        (m) => Math.abs(vendor.monthlyTotals[m] ?? 0) > 0.005
+      ).length;
+      if (firedCount < 2) continue;
+      const sumAcross = recent.reduce(
+        (s, m) => s + (vendor.monthlyTotals[m] ?? 0),
+        0
+      );
+      const avg = sumAcross / recent.length;
+      if (Math.abs(avg) < 0.005) continue;
+      // Direction: vendor.direction determines income/expense bucket.
+      // "mixed" is rare (post-dominance test) — bucket by sign of avg.
+      const direction: "income" | "expense" =
+        vendor.direction === "income"
+          ? "income"
+          : vendor.direction === "expense"
+            ? "expense"
+            : avg >= 0
+              ? "income"
+              : "expense";
 
-    // A recurring pattern fires ONCE per month. Compute its typical day-of-
-    // month from history: use the MODE (most common day). If equally split,
-    // use the median. Previous version placed one projection per UNIQUE day
-    // the vendor ever appeared — for vendors with variable timing this
-    // duplicated income/expenses, blowing the forecast up by 5-10x.
-    const dayCounts = new Map<number, number>();
-    for (const o of payment.occurrences) {
-      const d = new Date(o.date + "T00:00:00Z").getUTCDate();
-      if (d >= 1 && d <= 31) dayCounts.set(d, (dayCounts.get(d) ?? 0) + 1);
-    }
-    let typicalDay: number | null = null;
-    if (dayCounts.size > 0) {
-      const sorted = [...dayCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-      typicalDay = sorted[0][0];
-    } else {
-      const d = new Date(payment.nextExpected + "T00:00:00Z").getUTCDate();
-      if (d >= 1 && d <= 31) typicalDay = d;
-    }
-    if (typicalDay == null) return;
-
-    const todayDate = new Date(today + "T00:00:00Z");
-    const candidate = new Date(
-      Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), typicalDay)
-    );
-    const candidateStr = formatDate(candidate);
-    if (candidateStr.slice(0, 7) !== today.slice(0, 7)) return;
-
-    // Skip if an actual from this vendor already covers this month.
-    const merch = payment.merchant.toLowerCase();
-    for (const [, txs] of actualsByDate) {
-      if (
-        txs.some(
-          (t) =>
-            t.merchant.toLowerCase().includes(merch) ||
-            merch.includes(t.merchant.toLowerCase())
-        )
-      ) {
-        return;
+      // Pick the placement day-of-month.
+      let dayOfMonth = vendor.typicalDayOfMonth;
+      if (dayOfMonth == null && vendor.occurrenceDates && vendor.occurrenceDates.length > 0) {
+        // Fallback: median UTC day across occurrence dates.
+        const occDays = vendor.occurrenceDates
+          .map((d) => new Date(d + "T00:00:00Z").getUTCDate())
+          .filter((d) => d >= 1 && d <= 31)
+          .sort((a, b) => a - b);
+        if (occDays.length > 0) dayOfMonth = occDays[Math.floor(occDays.length / 2)];
       }
-    }
+      if (dayOfMonth == null) continue;
 
-    addToDay(candidateStr, buildTx(payment, direction, sub), payment.confidenceTier === "medium");
+      // Clamp to the actual length of the current month.
+      const lastDay = new Date(
+        Date.UTC(
+          parseInt(monthKey.slice(0, 4), 10),
+          parseInt(monthKey.slice(5, 7), 10),
+          0
+        )
+      ).getUTCDate();
+      const placementDay = Math.min(dayOfMonth, lastDay);
+      const placementDate = `${monthKey}-${String(placementDay).padStart(2, "0")}`;
+
+      // If the placement date is in the past AND an actual already covers
+      // this vendor on that date, skip (actual wins).
+      if (placementDate < today) {
+        const existing = actualsByDate.get(placementDate);
+        if (existing && existing.length > 0) {
+          const merch = vendor.canonicalName.toLowerCase();
+          const overlap = existing.some(
+            (t) =>
+              t.merchant.toLowerCase().includes(merch) ||
+              merch.includes(t.merchant.toLowerCase())
+          );
+          if (overlap) continue;
+        }
+      }
+
+      const amount = Math.abs(avg);
+      const projection: ExpectedTransaction = {
+        merchant: vendor.canonicalName,
+        expectedAmount: amount,
+        category: direction === "income" ? "Income" : "",
+        subcategory: direction === "income" ? "property-income" : "supplier-payments",
+        recurring: true,
+        confidence: 0.8,
+        confidenceTier: "high",
+        status: placementDate < today ? "late" : "expected",
+        recurrence: null,
+      };
+      addToDay(placementDate, projection, false);
+    }
   }
-  for (const p of patterns.recurringExpenses) placeRecurringAcrossMonth(p, "expense");
-  for (const i of patterns.recurringIncome) placeRecurringAcrossMonth(i, "income");
 
   // 3. Determine the month-start balance.
   // If caller didn't pass one explicitly, walk backwards: subtract net of
@@ -299,69 +287,6 @@ export function generateDailyForecast(
     });
 
     balance = closing;
-  }
-
-  // Post-pass: scale recurring-projection days so the chart's final closing
-  // balance matches the headline's recurringProjectedMonthEnd exactly.
-  //
-  // Rules:
-  //   - Past days that show ACTUAL transactions (from statement) are not
-  //     touched — those are facts.
-  //   - Past days that show recurring PROJECTIONS (no actuals available) AND
-  //     future days are scaled. Together they are the "recurring component".
-  //
-  // We scale income and expense channels independently so the chart totals
-  // align with hybridForecast.recurring.income / .expenses.
-  if (
-    options.targetRecurringIncome != null ||
-    options.targetRecurringExpenses != null
-  ) {
-    // Identify "recurring projection" days = days where the displayed txs
-    // come from projections (no actual was found for that date).
-    const isProjectionDay = (d: DailyForecast): boolean => {
-      const dateStr = d.date;
-      const actualsHere = actualsByDate.get(dateStr) ?? [];
-      // Future days never have actuals — always projections.
-      if (dateStr >= today) return true;
-      // Past days WITH actuals are kept as-is.
-      return actualsHere.length === 0;
-    };
-
-    const projectionDays = days.filter(isProjectionDay);
-    const projIncomeSum = projectionDays.reduce((s, d) => s + d.expectedIncome, 0);
-    const projExpenseSum = projectionDays.reduce((s, d) => s + d.expectedExpenses, 0);
-
-    const incomeScale =
-      options.targetRecurringIncome != null && projIncomeSum > 0
-        ? options.targetRecurringIncome / projIncomeSum
-        : 1;
-    const expenseScale =
-      options.targetRecurringExpenses != null && projExpenseSum > 0
-        ? options.targetRecurringExpenses / projExpenseSum
-        : 1;
-
-    if (incomeScale !== 1 || expenseScale !== 1) {
-      const rescale = (tx: ExpectedTransaction) => {
-        const scale = tx.category === "Income" ? incomeScale : expenseScale;
-        tx.expectedAmount = tx.expectedAmount * scale;
-      };
-      // Rebuild day-by-day with scaled amounts so opening/closing chain stays
-      // internally consistent (validator: opening + income - expenses = closing).
-      let runningBalance = days[0]?.openingBalance ?? monthStartBalance;
-      for (const day of days) {
-        if (isProjectionDay(day)) {
-          day.transactions.forEach(rescale);
-          day.possibleUpcoming.forEach(rescale);
-          day.expectedIncome *= incomeScale;
-          day.expectedExpenses *= expenseScale;
-          day.mediumConfidenceIncome *= incomeScale;
-          day.mediumConfidenceExpenses *= expenseScale;
-        }
-        day.openingBalance = runningBalance;
-        day.closingBalance = runningBalance + day.expectedIncome - day.expectedExpenses;
-        runningBalance = day.closingBalance;
-      }
-    }
   }
 
   return days;

@@ -23,6 +23,10 @@ export interface VendorMonthlyHistory {
   canonicalName: string;
   direction: "income" | "expense" | "mixed";
   monthlyTotals: Record<string, number>; // YYYY-MM → total amount that month
+  /** Mode day-of-month (UTC) across all historical occurrences. Ties → earliest. */
+  typicalDayOfMonth?: number;
+  /** Raw occurrence dates (YYYY-MM-DD) for fallback / multi-day placement. */
+  occurrenceDates?: string[];
 }
 
 export interface HybridComponent {
@@ -178,10 +182,11 @@ export function computeHybridForecast(
         }
       }
     }
-    // Pro-rate by fraction of month remaining (recurring vendors
-    // statistically fire across the whole month).
-    recIncome *= fractionRemaining;
-    recExpenses *= fractionRemaining;
+    // NOTE: Do NOT pro-rate recurring by fractionRemaining. The recurring
+    // component is the FULL MONTHLY average — the daily forecaster places
+    // each vendor's avg-monthly-total on its mode day-of-month exactly once,
+    // so the chart sum equals this full-monthly figure. Pro-rating here
+    // would create a chart/headline mismatch.
   } else {
     // Fallback: old pattern-tier approach (kept for safety only).
     for (const p of patterns.recurringIncome) {

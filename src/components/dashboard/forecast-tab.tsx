@@ -226,11 +226,11 @@ export function ForecastTab(props: ForecastTabProps) {
               </div>
               <div className="grid grid-cols-2 gap-x-6 mb-2">
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">Recurring income</span>
+                  <span className="text-zinc-500">Recurring income /mo</span>
                   <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.recurring.income)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">Recurring expenses</span>
+                  <span className="text-zinc-500">Recurring expenses /mo</span>
                   <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.recurring.expenses)}</span>
                 </div>
               </div>

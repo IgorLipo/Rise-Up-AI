@@ -718,6 +718,16 @@ async function computeAggregate(
     confidence: number;
     classificationRule: string;
   } | null = null;
+  // Hoisted so the daily forecaster (called later) can re-use the same data
+  // the hybrid forecaster used. This guarantees chart_sum == headline_recurring.
+  let vendorHistory: Array<{
+    canonicalName: string;
+    direction: "income" | "expense" | "mixed";
+    monthlyTotals: Record<string, number>;
+    typicalDayOfMonth?: number;
+    occurrenceDates?: string[];
+  }> = [];
+  let recentCompleteMonths: string[] = [];
   if (latestClosingBalance != null && latestPeriodTo) {
     // Use ALL complete historical months (passing Infinity means "no cap").
     // For this user's data (11 months) the avg-monthly figure is more stable
@@ -735,23 +745,32 @@ async function computeAggregate(
     );
     // Build per-vendor monthly-total history for the hybrid forecaster's
     // "fired in ≥2 of last 3 months" rule.
-    const vendorHistory: Array<{
-      canonicalName: string;
-      direction: "income" | "expense" | "mixed";
-      monthlyTotals: Record<string, number>;
-    }> = [];
+    vendorHistory = [];
     for (const v of learningReport.vendors.values()) {
       // Store POSITIVE monthly totals. Direction is kept on the vendor;
       // the hybrid forecaster decides which bucket to add to.
       const monthly: Record<string, number> = {};
+      const dayCounts = new Map<number, number>();
       for (let i = 0; i < v.dates.length; i++) {
         const m = v.dates[i].slice(0, 7);
         monthly[m] = (monthly[m] ?? 0) + Math.abs(v.amounts[i]);
+        const d = new Date(v.dates[i] + "T00:00:00Z").getUTCDate();
+        if (d >= 1 && d <= 31) dayCounts.set(d, (dayCounts.get(d) ?? 0) + 1);
+      }
+      // Mode day-of-month: most common; ties broken by earliest day.
+      let typicalDayOfMonth: number | undefined;
+      if (dayCounts.size > 0) {
+        const sorted = [...dayCounts.entries()].sort(
+          (a, b) => b[1] - a[1] || a[0] - b[0]
+        );
+        typicalDayOfMonth = sorted[0][0];
       }
       vendorHistory.push({
         canonicalName: v.canonicalName,
         direction: v.direction,
         monthlyTotals: monthly,
+        typicalDayOfMonth,
+        occurrenceDates: [...v.dates],
       });
     }
 
@@ -763,6 +782,7 @@ async function computeAggregate(
       .map((m) => m.month)
       .sort();
     const recentMonths = completeMonths.slice(-3);
+    recentCompleteMonths = recentMonths;
     let oneOffIncomeSum = 0;
     let oneOffExpenseSum = 0;
     let oneOffMonthsCount = 0;
@@ -934,12 +954,10 @@ async function computeAggregate(
       forecastStartingBalance,
       todayStrForForecast,
       actualThisMonth,
-      recurringHeadline
-        ? {
-            targetRecurringIncome: recurringHeadline.recurring.income,
-            targetRecurringExpenses: recurringHeadline.recurring.expenses,
-          }
-        : undefined,
+      {
+        vendorHistory,
+        recentCompleteMonths,
+      },
     );
 
     // After scaling, use the chart's actual final closing balance as the

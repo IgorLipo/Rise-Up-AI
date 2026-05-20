@@ -314,22 +314,21 @@ export function generateForecast(
     type: "credit" | "debit";
     subcategory?: string;
   }>,
-  targets?: {
-    targetRecurringIncome?: number;
-    targetRecurringExpenses?: number;
+  recurringSource?: {
+    vendorHistory?: import("./hybrid-forecaster").VendorMonthlyHistory[];
+    recentCompleteMonths?: string[];
   },
 ): MonthEndForecast {
   const todayStr = today ?? new Date().toISOString().split("T")[0];
   const monthEnd = getMonthEnd(todayStr);
 
   // Daily chart shows recurring transactions only — clear and concrete.
-  // Non-recurring activity is summarised separately by the headline.
-  // When `targets` is supplied, future-day recurring totals are scaled so the
-  // chart's projected income/expense exactly match the headline numbers.
+  // Recurring projections come from vendorHistory (same source as the hybrid
+  // forecaster), so chart sums naturally match the headline — no scaling.
   const daily = generateDailyForecast(patterns, currentBalance, todayStr, {
     actualThisMonth,
-    targetRecurringIncome: targets?.targetRecurringIncome,
-    targetRecurringExpenses: targets?.targetRecurringExpenses,
+    vendorHistory: recurringSource?.vendorHistory,
+    recentCompleteMonths: recurringSource?.recentCompleteMonths,
   });
 
   // Filter to HIGH confidence only for main forecast
