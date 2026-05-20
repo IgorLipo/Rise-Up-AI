@@ -9,7 +9,7 @@ import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
 import type { VendorIntelEntry } from "@/lib/vendor-intel";
-import { normalizeMerchant, coreMerchant } from "@/lib/detection/merchant-normalizer";
+import { normalizeMerchant, coreMerchant, canonicalFirmName } from "@/lib/detection/merchant-normalizer";
 import { classifySubcategory } from "@/lib/detection/subcategory-classifier";
 import { extractEntities, entityAttributesForVendor } from "@/lib/detection/entity-extractor";
 import type { AIClassification } from "@/lib/detection/ai-classifier";
@@ -334,7 +334,8 @@ async function computeAggregate(
 
   const filteredCoreKeys = new Set<string>();
   for (const tx of workingTransactions) {
-    const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    const firm = canonicalFirmName(tx.description);
+    const coreKey = (firm ?? coreMerchant(normalizeMerchant(tx.description))).toLowerCase();
     filteredCoreKeys.add(coreKey);
     filteredCoreKeys.add(tx.description.toLowerCase().trim());
   }
@@ -798,7 +799,8 @@ async function computeAggregate(
         if (fired >= 2) recurringVendorSet.add(v.canonicalName.toLowerCase());
       }
       function vendorKey(desc: string): string {
-        return coreMerchant(normalizeMerchant(desc)).toLowerCase();
+        const firm = canonicalFirmName(desc);
+        return (firm ?? coreMerchant(normalizeMerchant(desc))).toLowerCase();
       }
       function isRecurringVendor(desc: string): boolean {
         return recurringVendorSet.has(vendorKey(desc));
@@ -855,7 +857,8 @@ async function computeAggregate(
   const categoryMap = new Map<string, { total: number; count: number; transactions: CategorySummary["transactions"] }>();
   for (const tx of workingTransactions) {
     if (tx.type !== "debit") continue;
-    const coreKey = coreMerchant(normalizeMerchant(tx.description)).toLowerCase();
+    const firmKeyHere = canonicalFirmName(tx.description);
+    const coreKey = (firmKeyHere ?? coreMerchant(normalizeMerchant(tx.description))).toLowerCase();
     const vendor = learningReport.vendors.get(coreKey);
     const storedSubcategory = tx.subcategory && tx.subcategory !== "uncategorized" ? tx.subcategory : null;
     const subcategory = vendor?.subcategory ?? storedSubcategory ?? classifySubcategory(tx.description, tx.type).subcategory;

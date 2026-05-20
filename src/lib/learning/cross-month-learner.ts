@@ -82,7 +82,12 @@ export function learnFromHistory(
 
   for (const tx of transactions) {
     const normalized = normalizeMerchant(tx.description);
-    const core = coreMerchant(normalized).toLowerCase();
+    // PRIMARY vendor key: canonical firm name when known (rolls up all
+    // per-occurrence suffixes — property names, invoice numbers, salary
+    // month tags, policy refs — into a single vendor). Falls back to
+    // coreMerchant for unknown vendors.
+    const firm = canonicalFirmName(tx.description);
+    const core = (firm ?? coreMerchant(normalized)).toLowerCase();
     if (!core || core.length < 2) continue;
 
     if (!vendorMap.has(core)) {
