@@ -528,27 +528,12 @@ async function computeAggregate(
       subcategory: tx.subcategory ?? undefined,
     }));
 
-  // Pre-compute the property-aware forecast's non-property buffer so we can
-  // feed it into the daily forecaster. This is what reconciles the daily
-  // trajectory with the headline — without it, the daily chart only shows
-  // detected recurring vendors and ends ~£28k optimistic.
-  const earlyPropertyAware = forecastStartingBalance != null && latestPeriodTo
-    ? computePropertyAwareForecast(
-        allTransactions,
-        forecastStartingBalance,
-        latestPeriodTo,
-        undefined,
-        3
-      )
-    : null;
-
   let forecast = forecastStartingBalance != null
     ? generateForecast(
         displayPatterns,
         forecastStartingBalance,
         todayStrForForecast,
-        actualThisMonth,
-        earlyPropertyAware?.predictedMonthEnd
+        actualThisMonth
       )
     : null;
   let forecastError: string | null = null;
@@ -781,8 +766,6 @@ async function computeAggregate(
     );
 
     // Property-aware forecast — the new headline method.
-    // Splits cashflow into property (recurring, stable ~9-17% CV) and
-    // non-property (avg-based, 9-97% CV) and forecasts each appropriately.
     propertyAwareForecast = computePropertyAwareForecast(
       allTransactions,
       latestClosingBalance,
@@ -790,6 +773,82 @@ async function computeAggregate(
       undefined,
       3
     );
+
+    // Attach example transactions to the hybrid forecast diagnostic so the
+    // UI can show "what does this number include?" with 10 sample rows per
+    // bucket. Helps the user trust the categorisation.
+    if (hybridForecast) {
+      const currentMonthKey = new Date().toISOString().slice(0, 7);
+      const thisMonthTxs = workingTransactions.filter(
+        (tx) => tx.date.slice(0, 7) === currentMonthKey
+      );
+
+      // Identify which vendors are "recurring" (fired in ≥2 of last 3 months)
+      // via firmTotals / monthlyTotals already computed for the hybrid call.
+      const recentMonths = monthlySummaries
+        .filter((m) => m.completeness !== "partial")
+        .map((m) => m.month)
+        .sort()
+        .slice(-3);
+      const recurringVendorSet = new Set<string>();
+      for (const v of vendorHistory) {
+        const fired = recentMonths.filter(
+          (m) => (v.monthlyTotals[m] ?? 0) > 0.005
+        ).length;
+        if (fired >= 2) recurringVendorSet.add(v.canonicalName.toLowerCase());
+      }
+      function vendorKey(desc: string): string {
+        return coreMerchant(normalizeMerchant(desc)).toLowerCase();
+      }
+      function isRecurringVendor(desc: string): boolean {
+        return recurringVendorSet.has(vendorKey(desc));
+      }
+
+      // Top N picker by absolute amount descending.
+      function topN<T extends { amount: number }>(arr: T[], n = 10): T[] {
+        return [...arr].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, n);
+      }
+
+      // Already this month
+      const actualIncome = thisMonthTxs
+        .filter((tx) => tx.type === "credit")
+        .map((tx) => ({ description: tx.description, amount: tx.amount, date: tx.date, subcategory: tx.subcategory }));
+      const actualExpenses = thisMonthTxs
+        .filter((tx) => tx.type === "debit")
+        .map((tx) => ({ description: tx.description, amount: tx.amount, date: tx.date, subcategory: tx.subcategory }));
+
+      // Recurring vendor examples — from the last complete month, top by amount.
+      const recentMonthKey = recentMonths[recentMonths.length - 1];
+      const recentMonthTxs = allTransactions.filter(
+        (tx) => tx.date.slice(0, 7) === recentMonthKey
+      );
+      const recurringIncomeExamples = recentMonthTxs
+        .filter((tx) => tx.type === "credit" && isRecurringVendor(tx.description))
+        .map((tx) => ({ description: tx.description, amount: tx.amount, date: tx.date, subcategory: tx.subcategory }));
+      const recurringExpenseExamples = recentMonthTxs
+        .filter((tx) => tx.type === "debit" && isRecurringVendor(tx.description))
+        .map((tx) => ({ description: tx.description, amount: tx.amount, date: tx.date, subcategory: tx.subcategory }));
+
+      // One-off vendor examples — from same recent month, NOT recurring.
+      const oneOffIncomeExamples = recentMonthTxs
+        .filter((tx) => tx.type === "credit" && !isRecurringVendor(tx.description))
+        .map((tx) => ({ description: tx.description, amount: tx.amount, date: tx.date, subcategory: tx.subcategory }));
+      const oneOffExpenseExamples = recentMonthTxs
+        .filter((tx) => tx.type === "debit" && !isRecurringVendor(tx.description))
+        .map((tx) => ({ description: tx.description, amount: tx.amount, date: tx.date, subcategory: tx.subcategory }));
+
+      hybridForecast = {
+        ...hybridForecast,
+        examples: {
+          actualSoFarIncome: topN(actualIncome),
+          actualSoFarExpenses: topN(actualExpenses),
+          recurringIncome: topN(recurringIncomeExamples),
+          recurringExpenses: topN(recurringExpenseExamples),
+          oneOffIncome: topN(oneOffIncomeExamples),
+          oneOffExpenses: topN(oneOffExpenseExamples),
+        },
+      };
+    }
   }
 
   // ── Category Breakdowns ──
