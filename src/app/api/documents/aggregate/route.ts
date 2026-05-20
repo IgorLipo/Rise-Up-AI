@@ -548,12 +548,7 @@ async function computeAggregate(
         forecastStartingBalance,
         todayStrForForecast,
         actualThisMonth,
-        earlyPropertyAware
-          ? {
-              income: earlyPropertyAware.nonProperty.income,
-              expenses: earlyPropertyAware.nonProperty.expenses,
-            }
-          : undefined
+        earlyPropertyAware?.predictedMonthEnd
       )
     : null;
   let forecastError: string | null = null;
