@@ -36,6 +36,10 @@ export interface ExampleTransaction {
   amount: number;
   date?: string;
   subcategory?: string;
+  /** How many of the last 3 complete months this vendor fired in (0-3). */
+  hitCount?: number;
+  /** "income" | "expense" — useful for badge tinting in UI. */
+  direction?: string;
 }
 
 export interface HybridForecast {

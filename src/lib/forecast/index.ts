@@ -39,6 +39,30 @@ export interface MonthEndForecast {
   forecastMode?: ForecastMode;
 }
 
+/**
+ * The new headline forecast — recurring vendors only, no one-offs.
+ *
+ *   recurringProjectedMonthEnd = currentBalance + actualSoFarNet
+ *                              + recurring.net  (already prorated)
+ *
+ * Daily chart's last-day closingBalance MUST equal recurringProjectedMonthEnd.
+ */
+export interface RecurringHeadline {
+  currentBalance: number;
+  actualSoFar: { income: number; expenses: number; net: number };
+  recurring: { income: number; expenses: number; net: number };
+  oneOffAvg: { income: number; expenses: number; net: number };
+  recurringProjectedMonthEnd: number;
+  monthEndDate: string;
+  asOfDate: string;
+  daysRemaining: number;
+  daysInMonth: number;
+  monthsUsed: number;
+  confidence: number;
+  /** Plain-English statement of the classification rule. */
+  classificationRule: string;
+}
+
 export function daysBetween(d1: string, d2: string): number {
   return Math.round((new Date(d2).getTime() - new Date(d1).getTime()) / 86400000);
 }
@@ -290,14 +314,22 @@ export function generateForecast(
     type: "credit" | "debit";
     subcategory?: string;
   }>,
+  targets?: {
+    targetRecurringIncome?: number;
+    targetRecurringExpenses?: number;
+  },
 ): MonthEndForecast {
   const todayStr = today ?? new Date().toISOString().split("T")[0];
   const monthEnd = getMonthEnd(todayStr);
 
   // Daily chart shows recurring transactions only — clear and concrete.
   // Non-recurring activity is summarised separately by the headline.
+  // When `targets` is supplied, future-day recurring totals are scaled so the
+  // chart's projected income/expense exactly match the headline numbers.
   const daily = generateDailyForecast(patterns, currentBalance, todayStr, {
     actualThisMonth,
+    targetRecurringIncome: targets?.targetRecurringIncome,
+    targetRecurringExpenses: targets?.targetRecurringExpenses,
   });
 
   // Filter to HIGH confidence only for main forecast

@@ -154,11 +154,36 @@ export function learnFromHistory(
     }
   }
 
-  // Finalize direction for all vendors (depends on all transactions)
+  // Finalize direction for all vendors. A vendor with both income and expense
+  // history is "mixed" ONLY when neither side dominates by ≥1.5× (by summed
+  // magnitude). Otherwise it gets the dominant side as its direction so
+  // downstream projections (recurring per-day placement, one-off bucketing)
+  // don't emit a +X / -X duplicate for the same vendor on the same day.
+  const DIRECTION_DOMINANCE_RATIO = 1.5;
   for (const vendor of vendorMap.values()) {
-    vendor.direction = vendor.incomeAmounts.length > 0 && vendor.expenseAmounts.length > 0 ? "mixed"
-      : vendor.incomeAmounts.length > 0 ? "income"
-      : "expense";
+    const incomeCount = vendor.incomeAmounts.length;
+    const expenseCount = vendor.expenseAmounts.length;
+    if (incomeCount === 0 && expenseCount === 0) {
+      vendor.direction = "expense";
+      continue;
+    }
+    if (incomeCount === 0) {
+      vendor.direction = "expense";
+      continue;
+    }
+    if (expenseCount === 0) {
+      vendor.direction = "income";
+      continue;
+    }
+    const incomeSum = vendor.incomeAmounts.reduce((s, a) => s + a, 0);
+    const expenseSum = vendor.expenseAmounts.reduce((s, a) => s + a, 0);
+    if (incomeSum > expenseSum * DIRECTION_DOMINANCE_RATIO) {
+      vendor.direction = "income";
+    } else if (expenseSum > incomeSum * DIRECTION_DOMINANCE_RATIO) {
+      vendor.direction = "expense";
+    } else {
+      vendor.direction = "mixed";
+    }
   }
 
   // Classify recurrence

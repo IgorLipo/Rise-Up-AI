@@ -1,5 +1,12 @@
 import type { Transaction } from "@/types";
-import { coreMerchant } from "./merchant-normalizer";
+import { coreMerchant, canonicalFirmName } from "./merchant-normalizer";
+
+// Dominance ratio used to decide a vendor's effective direction when it has
+// both income and expense occurrences. If one side is ≥ 1.5× the other (by
+// summed magnitude), that side wins. Within 1.5× → truly bidirectional and
+// excluded from the per-day recurring projection entirely (still counted in
+// the net vendorHistory used by the hybrid forecaster).
+const DIRECTION_DOMINANCE_RATIO = 1.5;
 
 export type ConfidenceTier = "high" | "medium" | "low";
 
@@ -109,10 +116,15 @@ export function getConfidenceTier(score: number): ConfidenceTier {
  * cross-month learner's oneOffCandidates, not the pattern detector's oneOffExpenses/oneOffIncome.
  */
 export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
-  // Group by core merchant
+  // Group by canonical firm name when known, falling back to coreMerchant.
+  // This rolls income and expense variants of the SAME vendor (e.g. OpenAI
+  // charge + OpenAI refund) into one group so we can decide a single dominant
+  // direction and avoid emitting the vendor into both recurringIncome AND
+  // recurringExpenses (which would project both -£20 and +£20 on the same day).
   const groups = new Map<string, Transaction[]>();
   for (const tx of transactions) {
-    const key = coreMerchant(tx.description).toLowerCase();
+    const firm = canonicalFirmName(tx.description);
+    const key = (firm ?? coreMerchant(tx.description)).toLowerCase();
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(tx);
   }
@@ -130,8 +142,61 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
       continue;
     }
 
+    // ── Dominance test ────────────────────────────────────────────────
+    // Decide which direction (income/expense) the vendor "really" is by
+    // summing magnitudes per side. Within 1.5× → truly bidirectional, drop
+    // from per-day projection (the net is still captured in hybrid
+    // vendorHistory which uses Math.abs of amounts + per-vendor direction).
+    let incomeSum = 0;
+    let expenseSum = 0;
+    let incomeCount = 0;
+    let expenseCount = 0;
+    for (const tx of group) {
+      if (tx.type === "credit") {
+        incomeSum += tx.amount;
+        incomeCount++;
+      } else {
+        expenseSum += tx.amount;
+        expenseCount++;
+      }
+    }
+    let dominantDirection: "income" | "expense" | null;
+    if (incomeCount === 0) {
+      dominantDirection = "expense";
+    } else if (expenseCount === 0) {
+      dominantDirection = "income";
+    } else if (incomeSum > expenseSum * DIRECTION_DOMINANCE_RATIO) {
+      dominantDirection = "income";
+    } else if (expenseSum > incomeSum * DIRECTION_DOMINANCE_RATIO) {
+      dominantDirection = "expense";
+    } else {
+      // Truly bidirectional — neither side dominates. Skip both buckets.
+      // The hybrid forecaster's vendorHistory captures the net via
+      // signed-by-direction sums, so removing this from the per-day
+      // projection just prevents the duplicate +X / -X placement bug.
+      dominantDirection = null;
+    }
+
+    if (dominantDirection === null) continue;
+
+    // Filter the group to only the dominant-direction transactions so
+    // downstream typicalAmount / day-of-month projections reflect the real
+    // recurring side, not contaminated by occasional refunds/reversals.
+    const dominantTxs = group.filter((tx) =>
+      dominantDirection === "income" ? tx.type === "credit" : tx.type === "debit"
+    );
+    if (dominantTxs.length < 2) {
+      // Fewer than 2 occurrences on the dominant side — treat as one-off.
+      const tx = dominantTxs[0];
+      if (tx) {
+        if (dominantDirection === "income") oneOffIncome.push(tx);
+        else oneOffExpenses.push(tx);
+      }
+      continue;
+    }
+
     // Sort by date
-    const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
+    const sorted = [...dominantTxs].sort((a, b) => a.date.localeCompare(b.date));
     const gaps = [];
     for (let i = 1; i < sorted.length; i++) {
       gaps.push(daysBetween(sorted[i - 1].date, sorted[i].date));
@@ -162,7 +227,7 @@ export function detectPatterns(transactions: Transaction[]): DetectedPatterns {
         occurrences: sorted.map((t) => ({ date: t.date, amount: t.amount })),
       };
 
-      if (sorted[0].type === "credit") {
+      if (dominantDirection === "income") {
         recurringIncome.push(payment);
       } else {
         recurringExpenses.push(payment);

@@ -91,6 +91,15 @@ export interface DailyForecastOptions {
    * target. Result: daily chart's final closing balance matches the headline.
    */
   targetMonthEndBalance?: number;
+
+  /**
+   * If provided, the SUM of expectedIncome across FUTURE days (today onward)
+   * is scaled so it equals targetRecurringIncome — guaranteeing the chart's
+   * total future income matches the headline recurring income exactly. Same
+   * for expenses. Past days (actuals) are not touched.
+   */
+  targetRecurringIncome?: number;
+  targetRecurringExpenses?: number;
 }
 
 export function generateDailyForecast(
@@ -290,6 +299,69 @@ export function generateDailyForecast(
     });
 
     balance = closing;
+  }
+
+  // Post-pass: scale recurring-projection days so the chart's final closing
+  // balance matches the headline's recurringProjectedMonthEnd exactly.
+  //
+  // Rules:
+  //   - Past days that show ACTUAL transactions (from statement) are not
+  //     touched — those are facts.
+  //   - Past days that show recurring PROJECTIONS (no actuals available) AND
+  //     future days are scaled. Together they are the "recurring component".
+  //
+  // We scale income and expense channels independently so the chart totals
+  // align with hybridForecast.recurring.income / .expenses.
+  if (
+    options.targetRecurringIncome != null ||
+    options.targetRecurringExpenses != null
+  ) {
+    // Identify "recurring projection" days = days where the displayed txs
+    // come from projections (no actual was found for that date).
+    const isProjectionDay = (d: DailyForecast): boolean => {
+      const dateStr = d.date;
+      const actualsHere = actualsByDate.get(dateStr) ?? [];
+      // Future days never have actuals — always projections.
+      if (dateStr >= today) return true;
+      // Past days WITH actuals are kept as-is.
+      return actualsHere.length === 0;
+    };
+
+    const projectionDays = days.filter(isProjectionDay);
+    const projIncomeSum = projectionDays.reduce((s, d) => s + d.expectedIncome, 0);
+    const projExpenseSum = projectionDays.reduce((s, d) => s + d.expectedExpenses, 0);
+
+    const incomeScale =
+      options.targetRecurringIncome != null && projIncomeSum > 0
+        ? options.targetRecurringIncome / projIncomeSum
+        : 1;
+    const expenseScale =
+      options.targetRecurringExpenses != null && projExpenseSum > 0
+        ? options.targetRecurringExpenses / projExpenseSum
+        : 1;
+
+    if (incomeScale !== 1 || expenseScale !== 1) {
+      const rescale = (tx: ExpectedTransaction) => {
+        const scale = tx.category === "Income" ? incomeScale : expenseScale;
+        tx.expectedAmount = tx.expectedAmount * scale;
+      };
+      // Rebuild day-by-day with scaled amounts so opening/closing chain stays
+      // internally consistent (validator: opening + income - expenses = closing).
+      let runningBalance = days[0]?.openingBalance ?? monthStartBalance;
+      for (const day of days) {
+        if (isProjectionDay(day)) {
+          day.transactions.forEach(rescale);
+          day.possibleUpcoming.forEach(rescale);
+          day.expectedIncome *= incomeScale;
+          day.expectedExpenses *= expenseScale;
+          day.mediumConfidenceIncome *= incomeScale;
+          day.mediumConfidenceExpenses *= expenseScale;
+        }
+        day.openingBalance = runningBalance;
+        day.closingBalance = runningBalance + day.expectedIncome - day.expectedExpenses;
+        runningBalance = day.closingBalance;
+      }
+    }
   }
 
   return days;

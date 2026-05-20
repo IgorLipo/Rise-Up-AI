@@ -4,7 +4,6 @@ import { detectAllAsync } from "@/lib/detection";
 import { generateForecast, daysBetween, validateDailyForecast } from "@/lib/forecast";
 import { computeHistoricalForecast, type HistoricalForecast } from "@/lib/forecast/historical-forecaster";
 import { computeHybridForecast, type HybridForecast } from "@/lib/forecast/hybrid-forecaster";
-import { computePropertyAwareForecast, type PropertyAwareForecast } from "@/lib/forecast/property-aware-forecaster";
 import { learnFromHistory, buildVendorIntelEntries } from "@/lib/learning/cross-month-learner";
 import { detectAllSuspicious } from "@/lib/detection/suspicious-detector";
 import { ensureCompleteVendorIntel, listVendorIntel, listAnnotations } from "@/lib/vendor-intel";
@@ -529,27 +528,11 @@ async function computeAggregate(
       subcategory: tx.subcategory ?? undefined,
     }));
 
-  let forecast = forecastStartingBalance != null
-    ? generateForecast(
-        displayPatterns,
-        forecastStartingBalance,
-        todayStrForForecast,
-        actualThisMonth
-      )
-    : null;
+  // Forecast generated AFTER hybridForecast below so it can use the headline
+  // recurring totals as scaling targets (ensures daily chart final closing
+  // balance == recurringProjectedMonthEnd exact to the pound).
+  let forecast: ReturnType<typeof generateForecast> | null = null;
   let forecastError: string | null = null;
-
-  if (forecast && currentPosition.balance != null) {
-    // Validator wants the balance at the START of the forecast window. The
-    // full-month forecast starts at month-1st, not at currentBalance.
-    const startBal = forecast.dailyForecast[0]?.openingBalance ?? currentPosition.balance;
-    const validation = validateDailyForecast(forecast, startBal);
-    if (!validation.valid) {
-      console.error("[aggregate] Forecast validation failed:", validation.errors);
-      forecastError = `Forecast math error: ${validation.errors.length} check(s) failed.`;
-      forecast = null;
-    }
-  }
 
   // ── Catch-Up Estimate ──
   let catchUpEstimate: {
@@ -560,7 +543,7 @@ async function computeAggregate(
     confidence: number;
   } | null = null;
 
-  if (latestPeriodTo && latestClosingBalance != null && forecast) {
+  if (latestPeriodTo && latestClosingBalance != null) {
     const todayStr = new Date().toISOString().split("T")[0];
     const daysSince = Math.max(0, daysBetween(latestPeriodTo, todayStr));
     if (daysSince > 0 && daysSince <= 30) {
@@ -606,9 +589,28 @@ async function computeAggregate(
     return { isLowConfidence: false, reason: null };
   })();
 
-  // ── Monthly grouping (from statement_history — bank-verified totals) ──
+  // ── Monthly grouping ──
+  // Tile totals are bucketed by the CALENDAR MONTH of each transaction's
+  // date (tx.date.slice(0,7)), so the History tile for "December" shows
+  // exactly the same row set the Transactions tab shows when its month
+  // filter = "2025-12". Statement-period totals are not used for counting
+  // because a statement period can straddle two calendar months and leave
+  // edge-day transactions out of the strict period range.
+  //
+  // The statement_history rows still drive WHICH calendar buckets we surface
+  // (one tile per statement) and the opening/closing balances on the tile
+  // come from the bank-verified statement_history row that anchors that
+  // bucket.
+  const txsByCalendarMonth = new Map<string, Transaction[]>();
+  for (const tx of allTransactions) {
+    const k = tx.date.slice(0, 7);
+    if (!txsByCalendarMonth.has(k)) txsByCalendarMonth.set(k, []);
+    txsByCalendarMonth.get(k)!.push(tx);
+  }
+
   const monthlySummaries: MonthlySummary[] = [];
   const seenMonthlyPeriods = new Set<string>();
+  const seenMonthBuckets = new Set<string>();
 
   for (const row of statementHistory ?? []) {
     const periodKey = `${row.statement_period_start}|${row.statement_period_end}`;
@@ -642,13 +644,29 @@ async function computeAggregate(
       }
     }
 
+    // Skip if another statement already produced a tile for this calendar
+    // bucket (rare, but a 3-month-span statement should still occupy only
+    // one bucket — the dominant month).
+    if (seenMonthBuckets.has(month)) continue;
+    seenMonthBuckets.add(month);
+
     const label = new Date(month + "-15T00:00:00Z").toLocaleDateString("en-GB", {
       year: "numeric",
       month: "long",
     });
 
-    const income = row.total_income != null ? Number(row.total_income) : 0;
-    const expenses = row.total_expenses != null ? Number(row.total_expenses) : 0;
+    // Compute income / expenses / count from the actual transactions whose
+    // calendar month equals this bucket (matches Transactions tab filter
+    // exactly). Statement-period totals (row.total_income etc.) would miss
+    // rows where the transaction date falls outside the strict
+    // period_from..period_to window but still belongs to this bucket.
+    const bucketTxs = txsByCalendarMonth.get(month) ?? [];
+    const income = bucketTxs
+      .filter((t) => t.type === "credit")
+      .reduce((s, t) => s + t.amount, 0);
+    const expenses = bucketTxs
+      .filter((t) => t.type === "debit")
+      .reduce((s, t) => s + t.amount, 0);
     const opening = row.opening_balance != null ? Number(row.opening_balance) : 0;
     const closing = row.closing_balance != null ? Number(row.closing_balance) : 0;
     const netFlow = income - expenses;
@@ -669,7 +687,7 @@ async function computeAggregate(
       totalIncome: income,
       totalExpenses: expenses,
       netFlow,
-      transactionCount: row.transaction_count ?? 0,
+      transactionCount: bucketTxs.length,
       status: monthStatus(income, expenses),
       completeness,
       dataFrom,
@@ -684,7 +702,22 @@ async function computeAggregate(
   // month-end projection in the UI.
   let hybridForecast: HybridForecast | null = null;
   let historicalForecast: HistoricalForecast | null = null;
-  let propertyAwareForecast: PropertyAwareForecast | null = null;
+  // Recurring-only headline (the user's new spec). Computed after hybrid
+  // because it reuses hybrid.recurring and hybrid.actualSoFar totals.
+  let recurringHeadline: {
+    currentBalance: number;
+    actualSoFar: { income: number; expenses: number; net: number };
+    recurring: { income: number; expenses: number; net: number };
+    oneOffAvg: { income: number; expenses: number; net: number };
+    recurringProjectedMonthEnd: number;
+    monthEndDate: string;
+    asOfDate: string;
+    daysRemaining: number;
+    daysInMonth: number;
+    monthsUsed: number;
+    confidence: number;
+    classificationRule: string;
+  } | null = null;
   if (latestClosingBalance != null && latestPeriodTo) {
     // Use ALL complete historical months (passing Infinity means "no cap").
     // For this user's data (11 months) the avg-monthly figure is more stable
@@ -766,15 +799,6 @@ async function computeAggregate(
       vendorHistory
     );
 
-    // Property-aware forecast — the new headline method.
-    propertyAwareForecast = computePropertyAwareForecast(
-      allTransactions,
-      latestClosingBalance,
-      latestPeriodTo,
-      undefined,
-      3
-    );
-
     // Attach example transactions to the hybrid forecast diagnostic so the
     // UI can show "what does this number include?" with 10 sample rows per
     // bucket. Helps the user trust the categorisation.
@@ -792,11 +816,16 @@ async function computeAggregate(
         .sort()
         .slice(-3);
       const recurringVendorSet = new Set<string>();
+      const vendorHitCount = new Map<string, number>();
+      const vendorDirection = new Map<string, string>();
       for (const v of vendorHistory) {
         const fired = recentMonths.filter(
           (m) => (v.monthlyTotals[m] ?? 0) > 0.005
         ).length;
-        if (fired >= 2) recurringVendorSet.add(v.canonicalName.toLowerCase());
+        const key = v.canonicalName.toLowerCase();
+        vendorHitCount.set(key, fired);
+        vendorDirection.set(key, v.direction);
+        if (fired >= 2) recurringVendorSet.add(key);
       }
       function vendorKey(desc: string): string {
         const firm = canonicalFirmName(desc);
@@ -804,6 +833,14 @@ async function computeAggregate(
       }
       function isRecurringVendor(desc: string): boolean {
         return recurringVendorSet.has(vendorKey(desc));
+      }
+      function decorateExample(tx: { description: string; amount: number; date?: string; subcategory?: string }) {
+        const k = vendorKey(tx.description);
+        return {
+          ...tx,
+          hitCount: vendorHitCount.get(k),
+          direction: vendorDirection.get(k),
+        };
       }
 
       // Top N picker by absolute amount descending.
@@ -842,14 +879,88 @@ async function computeAggregate(
       hybridForecast = {
         ...hybridForecast,
         examples: {
-          actualSoFarIncome: topN(actualIncome),
-          actualSoFarExpenses: topN(actualExpenses),
-          recurringIncome: topN(recurringIncomeExamples),
-          recurringExpenses: topN(recurringExpenseExamples),
-          oneOffIncome: topN(oneOffIncomeExamples),
-          oneOffExpenses: topN(oneOffExpenseExamples),
+          actualSoFarIncome: topN(actualIncome).map(decorateExample),
+          actualSoFarExpenses: topN(actualExpenses).map(decorateExample),
+          recurringIncome: topN(recurringIncomeExamples).map(decorateExample),
+          recurringExpenses: topN(recurringExpenseExamples).map(decorateExample),
+          oneOffIncome: topN(oneOffIncomeExamples).map(decorateExample),
+          oneOffExpenses: topN(oneOffExpenseExamples).map(decorateExample),
         },
       };
+    }
+
+    // Build the recurring-only headline.
+    //
+    // Math note: forecastStartingBalance is the statement closing balance on
+    // statement_period_to (often before today). The daily forecaster derives
+    // a synthetic month-start balance from this by walking actuals backwards,
+    // then iterates forward through actuals + scaled recurring. The chart's
+    // final closingBalance therefore equals:
+    //
+    //   forecastStartingBalance + recurring.net
+    //
+    // (the in-month actuals cancel: they're subtracted to derive monthStart,
+    // then added back as we walk forward.)
+    //
+    // To guarantee headline == chart endpoint to the pound we use the same
+    // formula here. One-off avg is shown separately, NOT added in.
+    if (hybridForecast && forecastStartingBalance != null) {
+      const recurringProjectedMonthEnd =
+        forecastStartingBalance + hybridForecast.recurring.net;
+      recurringHeadline = {
+        currentBalance: forecastStartingBalance,
+        actualSoFar: hybridForecast.actualSoFar,
+        recurring: hybridForecast.recurring,
+        oneOffAvg: hybridForecast.oneOffAvg,
+        recurringProjectedMonthEnd,
+        monthEndDate: hybridForecast.monthEndDate,
+        asOfDate: hybridForecast.asOfDate,
+        daysRemaining: hybridForecast.daysRemaining,
+        daysInMonth: hybridForecast.daysInMonth,
+        monthsUsed: hybridForecast.monthsUsed,
+        confidence: hybridForecast.confidence,
+        classificationRule:
+          "Vendor (canonical-firm key) fired in ≥2 of the last 3 complete months → recurring; else → one-off.",
+      };
+    }
+  }
+
+  // Generate daily forecast NOW that we know the recurring targets. Scaling
+  // future days to those targets guarantees the chart's final closing balance
+  // equals the recurringProjectedMonthEnd to the pound.
+  if (forecastStartingBalance != null) {
+    forecast = generateForecast(
+      displayPatterns,
+      forecastStartingBalance,
+      todayStrForForecast,
+      actualThisMonth,
+      recurringHeadline
+        ? {
+            targetRecurringIncome: recurringHeadline.recurring.income,
+            targetRecurringExpenses: recurringHeadline.recurring.expenses,
+          }
+        : undefined,
+    );
+
+    // After scaling, use the chart's actual final closing balance as the
+    // authoritative predictedMonthEnd, and back-propagate to the headline so
+    // the two are guaranteed identical to the pound (even in edge cases where
+    // actuals exist on/after today).
+    if (forecast && recurringHeadline && forecast.dailyForecast.length > 0) {
+      const chartFinal =
+        forecast.dailyForecast[forecast.dailyForecast.length - 1].closingBalance;
+      forecast.predictedMonthEnd = chartFinal;
+      recurringHeadline.recurringProjectedMonthEnd = chartFinal;
+    }
+
+    if (forecast && currentPosition.balance != null) {
+      const startBal = forecast.dailyForecast[0]?.openingBalance ?? currentPosition.balance;
+      const validation = validateDailyForecast(forecast, startBal);
+      if (!validation.valid) {
+        console.error("[aggregate] Forecast validation failed:", validation.errors);
+        forecastError = `Forecast math error: ${validation.errors.length} check(s) failed.`;
+        forecast = null;
+      }
     }
   }
 
@@ -1025,7 +1136,7 @@ async function computeAggregate(
 
     hybridForecast,
 
-    propertyAwareForecast,
+    recurringHeadline,
 
     monthly: monthlySummaries,
 
