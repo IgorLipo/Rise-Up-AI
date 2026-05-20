@@ -289,14 +289,19 @@ export function generateForecast(
     amount: number;
     type: "credit" | "debit";
     subcategory?: string;
-  }>
+  }>,
+  nonRecurringBuffer?: { income: number; expenses: number }
 ): MonthEndForecast {
   const todayStr = today ?? new Date().toISOString().split("T")[0];
   const monthEnd = getMonthEnd(todayStr);
 
-  // Full-month daily forecast: actuals for past days, projections for future.
+  // Full-month daily forecast: actuals for past days, projections for future,
+  // and a daily-distributed "typical other activity" line so the trajectory
+  // ends at the same number as the property-aware headline.
   const daily = generateDailyForecast(patterns, currentBalance, todayStr, {
     actualThisMonth,
+    nonRecurringBufferIncome: nonRecurringBuffer?.income,
+    nonRecurringBufferExpenses: nonRecurringBuffer?.expenses,
   });
 
   // Filter to HIGH confidence only for main forecast

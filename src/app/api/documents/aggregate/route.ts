@@ -528,12 +528,32 @@ async function computeAggregate(
       subcategory: tx.subcategory ?? undefined,
     }));
 
+  // Pre-compute the property-aware forecast's non-property buffer so we can
+  // feed it into the daily forecaster. This is what reconciles the daily
+  // trajectory with the headline — without it, the daily chart only shows
+  // detected recurring vendors and ends ~£28k optimistic.
+  const earlyPropertyAware = forecastStartingBalance != null && latestPeriodTo
+    ? computePropertyAwareForecast(
+        allTransactions,
+        forecastStartingBalance,
+        latestPeriodTo,
+        undefined,
+        3
+      )
+    : null;
+
   let forecast = forecastStartingBalance != null
     ? generateForecast(
         displayPatterns,
         forecastStartingBalance,
         todayStrForForecast,
-        actualThisMonth
+        actualThisMonth,
+        earlyPropertyAware
+          ? {
+              income: earlyPropertyAware.nonProperty.income,
+              expenses: earlyPropertyAware.nonProperty.expenses,
+            }
+          : undefined
       )
     : null;
   let forecastError: string | null = null;
