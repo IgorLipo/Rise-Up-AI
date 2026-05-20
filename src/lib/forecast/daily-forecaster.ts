@@ -82,17 +82,12 @@ export interface DailyForecastOptions {
   monthStartBalance?: number;
 
   /**
-   * Net buffer (income - expenses) of typical NON-RECURRING / non-property
-   * activity expected this month. Spread evenly across remaining days so the
-   * daily chart's closing balance reconciles with the property-aware headline.
-   *
-   * Without this, the daily chart only shows detected recurring vendors —
-   * which on this user's data lean optimistic by ~£28k because the recurring
-   * detector under-counts the small/irregular expenses.
+   * Target month-end balance from the headline forecast. When provided, the
+   * daily chart adds a daily "Typical other activity" line whose total
+   * exactly closes the gap between the recurring-only trajectory and this
+   * target. Result: daily chart's final closing balance matches the headline.
    */
-  nonRecurringBufferNet?: number;
-  nonRecurringBufferIncome?: number;
-  nonRecurringBufferExpenses?: number;
+  targetMonthEndBalance?: number;
 }
 
 export function generateDailyForecast(
@@ -239,19 +234,36 @@ export function generateDailyForecast(
   const highConfidenceExpenses = patterns.recurringExpenses.filter(p => p.confidenceTier === "high");
   const totalExpectedExpenses = highConfidenceExpenses.reduce((s, p) => s + p.typicalAmount, 0);
 
-  // Spread the non-recurring buffer evenly across future days. This is what
-  // reconciles the daily chart's trajectory with the property-aware headline:
-  // recurring vendors are placed on their typical days, but the typical
-  // non-recurring income/expense gets distributed daily so the closing
-  // balance arrives at the same number as the headline.
+  // To reconcile the daily-chart trajectory with the headline, we'll
+  // compute the closing balance from the recurring-only run first, then
+  // distribute a per-day "Typical other activity" amount that closes the gap.
+  // We compute this in two passes: first determine the recurring-only
+  // closing, then add the buffer.
+  let recurringOnlyFinalClosing = monthStartBalance;
+  {
+    let bal = monthStartBalance;
+    for (let d3 = new Date(monthStart); d3 <= monthEnd; d3.setDate(d3.getDate() + 1)) {
+      const dStr = formatDate(d3);
+      const isPastD = dStr < today;
+      const actuals = actualsByDate.get(dStr) ?? [];
+      const recHigh = perDay.get(dStr) ?? [];
+      const txs = isPastD ? (actuals.length > 0 ? actuals : recHigh) : recHigh;
+      const inc = txs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
+      const exp = txs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
+      bal = bal + inc - exp;
+    }
+    recurringOnlyFinalClosing = bal;
+  }
+
   let futureDayCount = 0;
   for (let d2 = new Date(monthStart); d2 <= monthEnd; d2.setDate(d2.getDate() + 1)) {
     if (formatDate(d2) >= today) futureDayCount++;
   }
-  const bufferIncomePerDay =
-    futureDayCount > 0 ? (options.nonRecurringBufferIncome ?? 0) / futureDayCount : 0;
-  const bufferExpensePerDay =
-    futureDayCount > 0 ? (options.nonRecurringBufferExpenses ?? 0) / futureDayCount : 0;
+  // Gap (positive = daily too optimistic, needs a deduction per day).
+  const gap = options.targetMonthEndBalance != null
+    ? recurringOnlyFinalClosing - options.targetMonthEndBalance
+    : 0;
+  const bufferPerDay = futureDayCount > 0 ? gap / futureDayCount : 0;
 
   for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
     const dateStr = formatDate(d);
@@ -275,20 +287,31 @@ export function generateDailyForecast(
     const medIncome = possibleTxs.reduce((s, t) => s + (t.category === "Income" ? t.expectedAmount : 0), 0);
     const medExpenses = possibleTxs.reduce((s, t) => s + (t.category !== "Income" ? t.expectedAmount : 0), 0);
 
-    // Add the non-recurring buffer to future days so the daily trajectory
-    // reconciles with the property-aware headline.
-    const dailyBufferInc = isPast ? 0 : bufferIncomePerDay;
-    const dailyBufferExp = isPast ? 0 : bufferExpensePerDay;
-    const highIncome = highIncomeRaw + dailyBufferInc;
-    const highExpenses = highExpensesRaw + dailyBufferExp;
-
-    if (!isPast && (dailyBufferInc > 0 || dailyBufferExp > 0)) {
-      // Surface the buffer as a single synthetic line item so users can see
-      // why their daily balance changes by this amount.
+    // Apply the gap-closing buffer to future days so the trajectory ends at
+    // the headline target. Positive bufferPerDay = the recurring-only chart
+    // was too optimistic; deduct it as a "typical other activity" expense.
+    const dailyBuffer = isPast ? 0 : bufferPerDay;
+    let highIncome = highIncomeRaw;
+    let highExpenses = highExpensesRaw;
+    if (dailyBuffer > 0) {
+      highExpenses += dailyBuffer;
       dayTxs.push({
         merchant: "Typical other activity (avg)",
-        expectedAmount: dailyBufferExp - dailyBufferInc,
-        category: dailyBufferExp >= dailyBufferInc ? "" : "Income",
+        expectedAmount: dailyBuffer,
+        category: "",
+        subcategory: "non-recurring-avg",
+        recurring: false,
+        confidence: 0.5,
+        confidenceTier: "medium",
+        status: "expected",
+        recurrence: null,
+      });
+    } else if (dailyBuffer < 0) {
+      highIncome += -dailyBuffer;
+      dayTxs.push({
+        merchant: "Typical other activity (avg)",
+        expectedAmount: -dailyBuffer,
+        category: "Income",
         subcategory: "non-recurring-avg",
         recurring: false,
         confidence: 0.5,
