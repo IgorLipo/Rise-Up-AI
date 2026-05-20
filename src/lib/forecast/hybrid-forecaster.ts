@@ -31,6 +31,13 @@ export interface HybridComponent {
   net: number;
 }
 
+export interface ExampleTransaction {
+  description: string;
+  amount: number;
+  date?: string;
+  subcategory?: string;
+}
+
 export interface HybridForecast {
   /** Sum of recurring-pattern projections for the current month. */
   recurring: HybridComponent;
@@ -54,6 +61,15 @@ export interface HybridForecast {
   daysInMonth: number;
   asOfDate: string;
   monthEndDate: string;
+  /** Top example transactions per category (up to 10 each). */
+  examples?: {
+    actualSoFarIncome: ExampleTransaction[];
+    actualSoFarExpenses: ExampleTransaction[];
+    recurringIncome: ExampleTransaction[];
+    recurringExpenses: ExampleTransaction[];
+    oneOffIncome: ExampleTransaction[];
+    oneOffExpenses: ExampleTransaction[];
+  };
 }
 
 function getMonthEnd(today: string): string {

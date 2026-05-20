@@ -290,17 +290,14 @@ export function generateForecast(
     type: "credit" | "debit";
     subcategory?: string;
   }>,
-  targetMonthEndBalance?: number
 ): MonthEndForecast {
   const todayStr = today ?? new Date().toISOString().split("T")[0];
   const monthEnd = getMonthEnd(todayStr);
 
-  // Full-month daily forecast: actuals for past days, projections for future,
-  // and a daily "typical other activity" line that closes the gap to the
-  // headline target so the chart trajectory matches the headline number.
+  // Daily chart shows recurring transactions only — clear and concrete.
+  // Non-recurring activity is summarised separately by the headline.
   const daily = generateDailyForecast(patterns, currentBalance, todayStr, {
     actualThisMonth,
-    targetMonthEndBalance,
   });
 
   // Filter to HIGH confidence only for main forecast

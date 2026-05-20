@@ -79,6 +79,14 @@ interface ForecastTabProps {
     daysInMonth: number;
     asOfDate: string;
     monthEndDate: string;
+    examples?: {
+      actualSoFarIncome: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+      actualSoFarExpenses: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+      recurringIncome: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+      recurringExpenses: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+      oneOffIncome: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+      oneOffExpenses: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+    };
   } | null;
   propertyAwareForecast?: {
     property: { income: number; expenses: number; net: number };
@@ -103,6 +111,49 @@ interface ForecastTabProps {
   monthlyOneOffExpenseAvg?: number;
   monthlyOneOffIncomeAvg?: number;
   oneOffHistoryMonths?: number;
+}
+
+function ExampleList({
+  title,
+  items,
+  color,
+}: {
+  title: string;
+  items: Array<{ description: string; amount: number; date?: string; subcategory?: string }>;
+  color: "emerald" | "red";
+}) {
+  if (!items || items.length === 0) return null;
+  const amountClass = color === "emerald" ? "text-emerald-700" : "text-red-600";
+  const sign = color === "emerald" ? "+" : "-";
+  return (
+    <details className="mb-2 rounded border border-zinc-100 bg-zinc-50/50">
+      <summary className="cursor-pointer px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-100">
+        ▸ {title} ({items.length})
+      </summary>
+      <div className="px-2 py-1 space-y-1">
+        {items.map((it, i) => (
+          <div key={i} className="flex justify-between items-baseline gap-2 text-[11px]">
+            <div className="min-w-0 flex-1">
+              <div className="text-zinc-700 truncate" title={it.description}>
+                {it.description}
+              </div>
+              {it.date && (
+                <div className="text-zinc-400 text-[10px]">
+                  {it.date}
+                  {it.subcategory && it.subcategory !== "uncategorized" && (
+                    <> · {it.subcategory.replace(/-/g, " ")}</>
+                  )}
+                </div>
+              )}
+            </div>
+            <span className={`font-mono tabular-nums whitespace-nowrap ${amountClass}`}>
+              {sign}{formatCurrency(it.amount)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 export function ForecastTab(props: ForecastTabProps) {
@@ -357,10 +408,17 @@ export function ForecastTab(props: ForecastTabProps) {
               </span>
             )}
           </summary>
-          <div className="px-4 pb-4 space-y-3 text-xs border-t border-zinc-100 pt-3">
+          <div className="px-4 pb-4 space-y-4 text-xs border-t border-zinc-100 pt-3">
+
+            {/* === Already this month === */}
             <div>
-              <div className="text-zinc-500 mb-1 font-medium">Already this month</div>
-              <div className="grid grid-cols-2 gap-x-6">
+              <div className="text-zinc-700 mb-0.5 font-semibold text-sm">
+                Already this month
+              </div>
+              <div className="text-zinc-400 mb-2 italic text-[11px]">
+                Real transactions on your statement for the current calendar month.
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 mb-2">
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Income received</span>
                   <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.actualSoFar.income)}</span>
@@ -370,10 +428,29 @@ export function ForecastTab(props: ForecastTabProps) {
                   <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.actualSoFar.expenses)}</span>
                 </div>
               </div>
+              <ExampleList
+                title="Income transactions"
+                items={hybridForecast.examples?.actualSoFarIncome ?? []}
+                color="emerald"
+              />
+              <ExampleList
+                title="Expense transactions"
+                items={hybridForecast.examples?.actualSoFarExpenses ?? []}
+                color="red"
+              />
             </div>
-            <div>
-              <div className="text-zinc-500 mb-1 font-medium">Detected recurring patterns</div>
-              <div className="grid grid-cols-2 gap-x-6">
+
+            {/* === Detected recurring patterns === */}
+            <div className="pt-3 border-t border-zinc-100">
+              <div className="text-zinc-700 mb-0.5 font-semibold text-sm">
+                Detected recurring patterns
+              </div>
+              <div className="text-zinc-400 mb-2 italic text-[11px]">
+                Vendors that paid you or were paid in at least 2 of the last 3 months.
+                Examples: rent from tenants, monthly utilities, software subscriptions,
+                regular contractors.
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 mb-2">
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Recurring income</span>
                   <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.recurring.income)}</span>
@@ -383,27 +460,56 @@ export function ForecastTab(props: ForecastTabProps) {
                   <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.recurring.expenses)}</span>
                 </div>
               </div>
+              <ExampleList
+                title="Income transactions (top 10 from last complete month)"
+                items={hybridForecast.examples?.recurringIncome ?? []}
+                color="emerald"
+              />
+              <ExampleList
+                title="Expense transactions (top 10 from last complete month)"
+                items={hybridForecast.examples?.recurringExpenses ?? []}
+                color="red"
+              />
             </div>
-            <div>
-              <div className="text-zinc-500 mb-1 font-medium">
+
+            {/* === Typical non-recurring activity === */}
+            <div className="pt-3 border-t border-zinc-100">
+              <div className="text-zinc-700 mb-0.5 font-semibold text-sm">
                 Typical non-recurring activity (one-off avg)
               </div>
-              <div className="grid grid-cols-2 gap-x-6">
+              <div className="text-zinc-400 mb-2 italic text-[11px]">
+                Vendors that appeared in 0 or 1 of the last 3 months. Examples:
+                ad-hoc supplier invoices, one-time refunds, irregular contractor
+                payments, occasional purchases. Averaged across the last 3 months
+                because individual occurrences can&apos;t be predicted.
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 mb-2">
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">One-off income</span>
+                  <span className="text-zinc-500">One-off income avg/mo</span>
                   <span className="font-mono text-emerald-700 tabular-nums">+{formatCurrency(hybridForecast.oneOffAvg.income)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">One-off expenses</span>
+                  <span className="text-zinc-500">One-off expenses avg/mo</span>
                   <span className="font-mono text-red-600 tabular-nums">-{formatCurrency(hybridForecast.oneOffAvg.expenses)}</span>
                 </div>
               </div>
+              <ExampleList
+                title="Income transactions (top 10 from last complete month)"
+                items={hybridForecast.examples?.oneOffIncome ?? []}
+                color="emerald"
+              />
+              <ExampleList
+                title="Expense transactions (top 10 from last complete month)"
+                items={hybridForecast.examples?.oneOffExpenses ?? []}
+                color="red"
+              />
             </div>
+
             {hybridForecast.reconciliationWarning && (
               <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
                 ⚠️ Recurring + one-off model net = {formatCurrency(hybridForecast.totalProjected.net)}.
                 Trailing avg net = {formatCurrency(historicalForecast.avgMonthlyNet)}.
-                Headline uses the trailing avg because it's more accurate.
+                Headline uses the trailing avg because it&apos;s more accurate.
               </div>
             )}
           </div>
