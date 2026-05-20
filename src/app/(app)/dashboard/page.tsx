@@ -84,25 +84,16 @@ interface AggregateResponse {
     asOfDate: string;
     monthEndDate: string;
   } | null;
-  propertyAwareForecast: {
-    property: { income: number; expenses: number; net: number };
-    nonProperty: { income: number; expenses: number; net: number };
+  recurringHeadline: {
+    currentBalance: number;
     actualSoFar: { income: number; expenses: number; net: number };
-    totalProjectedNet: number;
-    predictedMonthEnd: number;
-    monthBreakdown: Array<{
-      month: string;
-      propertyIncome: number;
-      propertyExpense: number;
-      nonPropertyIncome: number;
-      nonPropertyExpense: number;
-    }>;
-    monthsUsed: number;
-    daysRemaining: number;
-    daysInMonth: number;
-    asOfDate: string;
+    recurring: { income: number; expenses: number; net: number };
+    oneOffAvg: { income: number; expenses: number; net: number };
+    recurringProjectedMonthEnd: number;
     monthEndDate: string;
     confidence: number;
+    monthsUsed: number;
+    classificationRule: string;
   } | null;
   monthly: Array<{
     month: string;
@@ -447,7 +438,7 @@ function DashboardContent() {
             balanceValidation={data.balanceValidation}
             historicalForecast={data.historicalForecast}
             hybridForecast={data.hybridForecast}
-            propertyAwareForecast={data.propertyAwareForecast}
+            recurringHeadline={data.recurringHeadline}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}
@@ -481,7 +472,7 @@ function DashboardContent() {
             balanceValidation={data.balanceValidation}
             historicalForecast={data.historicalForecast}
             hybridForecast={data.hybridForecast}
-            propertyAwareForecast={data.propertyAwareForecast}
+            recurringHeadline={data.recurringHeadline}
             monthlyOneOffExpenseAvg={data.forecast?.monthlyOneOffExpenseAvg}
             monthlyOneOffIncomeAvg={data.forecast?.monthlyOneOffIncomeAvg}
             oneOffHistoryMonths={data.forecast?.oneOffHistoryMonths}

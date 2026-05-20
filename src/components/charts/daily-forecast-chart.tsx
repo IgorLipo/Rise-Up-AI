@@ -26,8 +26,9 @@ function DailyForecastRow({ day }: { day: DailyForecast }) {
     if (incomeItems[i]) combined.push(incomeItems[i]);
     if (expenseItems[i]) combined.push(expenseItems[i]);
   }
-  const topItems = combined.slice(0, 6);
-  const remaining = combined.length - 6;
+  // First 5 visible; if more exist, show "Show all (N)" toggle.
+  const topItems = expanded ? combined : combined.slice(0, 5);
+  const remaining = combined.length - 5;
 
   return (
     <div className="border border-zinc-200 rounded-lg overflow-hidden">
@@ -73,32 +74,14 @@ function DailyForecastRow({ day }: { day: DailyForecast }) {
         ))}
       </div>
 
-      {/* "+X more" expandable section */}
+      {/* "Show all (N)" expandable section */}
       {remaining > 0 && (
-        <>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-full px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-50 transition-colors text-left"
-          >
-            {expanded ? "Show less" : `+${remaining} more items`}
-          </button>
-          {expanded && (
-            <div className="divide-y divide-zinc-100 border-t border-zinc-100">
-              {combined.slice(5).map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-2 hover:bg-zinc-50 transition-colors">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.confidenceTier === "high" ? "bg-emerald-500" : "bg-amber-400"}`} />
-                    <span className="text-xs text-zinc-700 truncate capitalize">{item.merchant}</span>
-                    <span className="text-[10px] text-zinc-400 capitalize">{item.subcategory}</span>
-                  </div>
-                  <span className={`text-xs font-mono ml-2 flex-shrink-0 ${item.expectedAmount > 0 ? "text-emerald-600" : "text-red-500"}`}>
-                    {item.expectedAmount > 0 ? "+" : ""}{formatCurrency(item.expectedAmount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full px-3 py-2 text-xs text-indigo-600 hover:bg-zinc-50 transition-colors text-left border-t border-zinc-100"
+        >
+          {expanded ? "Show less" : `Show all (${combined.length})`}
+        </button>
       )}
 
       {/* Empty state for days with no transactions */}

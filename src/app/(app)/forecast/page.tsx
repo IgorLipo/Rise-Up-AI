@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 import { useActiveCompany } from "@/lib/auth/client";
 import type { DailyForecast, ForecastStatus } from "@/lib/forecast";
 import { StatusBadge } from "@/components/forecast/status-badge";
+import { ForecastHeadline, type RecurringHeadlineData } from "@/components/forecast/forecast-headline";
 import { formatCurrency } from "@/lib/utils";
 
 interface AggregateResponse {
@@ -29,6 +30,68 @@ interface AggregateResponse {
     biggestRisks: Array<{ title: string; description: string; severity: string }>;
     generatedAt: string;
   };
+  recurringHeadline: RecurringHeadlineData | null;
+}
+
+function DayCard({ day }: { day: DailyForecast }) {
+  const [expanded, setExpanded] = useState(false);
+  const all = [...day.transactions, ...day.possibleUpcoming];
+  const visible = expanded ? all : all.slice(0, 5);
+  const hidden = all.length - 5;
+  return (
+    <div
+      className={`bg-white border rounded-xl p-3 ${
+        day.riskFlag ? "border-amber-300 bg-amber-50" : "border-zinc-200"
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium text-zinc-900">
+            {new Date(day.date).toLocaleDateString("en-GB", {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+            })}
+          </div>
+          {day.riskFlag && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
+              Risk
+            </span>
+          )}
+        </div>
+        <div className="text-sm font-bold tabular-nums text-zinc-900">
+          {formatCurrency(day.closingBalance)}
+        </div>
+      </div>
+      {all.length > 0 ? (
+        <div className="space-y-1">
+          {visible.map((tx, i) => (
+            <div key={i} className="flex items-center justify-between text-xs">
+              <span className="text-zinc-600 truncate flex-1 mr-2">{tx.merchant}</span>
+              <span
+                className={`font-mono tabular-nums ${
+                  tx.category === "Income" ? "text-emerald-600" : "text-red-500"
+                }`}
+              >
+                {tx.category === "Income" ? "+" : "-"}
+                {formatCurrency(tx.expectedAmount)}
+              </span>
+            </div>
+          ))}
+          {hidden > 0 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-[11px] text-indigo-600 hover:text-indigo-800"
+            >
+              {expanded ? "Show less" : `Show all (${all.length})`}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="text-xs text-zinc-400">No expected transactions</div>
+      )}
+    </div>
+  );
 }
 
 export default function ForecastPage() {
@@ -83,29 +146,8 @@ export default function ForecastPage() {
         </div>
       )}
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white border border-zinc-200 rounded-lg p-3">
-          <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Month-end</div>
-          <div className={`text-sm font-bold tabular-nums mt-0.5 ${
-            forecast.predictedMonthEnd < 0 ? "text-red-600" : "text-zinc-900"
-          }`}>
-            {formatCurrency(forecast.predictedMonthEnd)}
-          </div>
-        </div>
-        <div className="bg-white border border-zinc-200 rounded-lg p-3">
-          <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Remaining in</div>
-          <div className="text-sm font-bold tabular-nums mt-0.5 text-emerald-600">
-            {formatCurrency(forecast.remainingIncome)}
-          </div>
-        </div>
-        <div className="bg-white border border-zinc-200 rounded-lg p-3">
-          <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Remaining out</div>
-          <div className="text-sm font-bold tabular-nums mt-0.5 text-red-500">
-            {formatCurrency(forecast.remainingExpenses)}
-          </div>
-        </div>
-      </div>
+      {/* Recurring-only headline — same component as dashboard ForecastTab. */}
+      {data.recurringHeadline && <ForecastHeadline data={data.recurringHeadline} />}
 
       {daily.length === 0 ? (
         <div className="text-sm text-zinc-400 text-center py-8">
@@ -139,51 +181,7 @@ export default function ForecastPage() {
           })()}
 
           {daily.map((day) => (
-            <div
-              key={day.date}
-              className={`bg-white border rounded-xl p-3 ${
-                day.riskFlag ? "border-amber-300 bg-amber-50" : "border-zinc-200"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium text-zinc-900">
-                    {new Date(day.date).toLocaleDateString("en-GB", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </div>
-                  {day.riskFlag && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
-                      Risk
-                    </span>
-                  )}
-                </div>
-                <div className="text-sm font-bold tabular-nums text-zinc-900">
-                  {formatCurrency(day.closingBalance)}
-                </div>
-              </div>
-              {day.transactions.length > 0 ? (
-                <div className="space-y-1">
-                  {day.transactions.map((tx, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-600 truncate flex-1 mr-2">{tx.merchant}</span>
-                      <span
-                        className={`font-mono tabular-nums ${
-                          tx.category === "Income" ? "text-emerald-600" : "text-red-500"
-                        }`}
-                      >
-                        {tx.category === "Income" ? "+" : "-"}
-                        {formatCurrency(tx.expectedAmount)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-xs text-zinc-400">No expected transactions</div>
-              )}
-            </div>
+            <DayCard key={day.date} day={day} />
           ))}
         </>
       )}
